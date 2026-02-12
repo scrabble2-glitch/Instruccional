@@ -21,7 +21,9 @@ const EnvSchema = z.object({
   R2_SECRET_ACCESS_KEY: z.string().default(""),
   R2_BUCKET: z.string().default(""),
   R2_PREFIX_BASE: z.string().default("cursos"),
-  R2_REGION: z.string().default("auto")
+  R2_REGION: z.string().default("auto"),
+  // Local filesystem (optional) - intended for development workflows.
+  LOCAL_COURSE_ROOT_DIR: z.string().default("")
 });
 
 export const env = EnvSchema.parse({
@@ -42,7 +44,8 @@ export const env = EnvSchema.parse({
   R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
   R2_BUCKET: process.env.R2_BUCKET,
   R2_PREFIX_BASE: process.env.R2_PREFIX_BASE,
-  R2_REGION: process.env.R2_REGION
+  R2_REGION: process.env.R2_REGION,
+  LOCAL_COURSE_ROOT_DIR: process.env.LOCAL_COURSE_ROOT_DIR
 });
 
 export type SafetyMode = "normal" | "estricto";

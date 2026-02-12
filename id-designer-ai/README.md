@@ -130,6 +130,7 @@ Referencia completa en `.env.example`.
 - `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`: credenciales Cloudflare R2 (solo server)
 - `R2_BUCKET`: bucket de R2
 - `R2_PREFIX_BASE`: prefijo base para “carpetas” por curso (default `cursos/`)
+- `LOCAL_COURSE_ROOT_DIR`: (opcional) carpeta raíz local para crear subcarpetas por curso
 
 ## Comandos
 
@@ -219,6 +220,14 @@ Si configuras `R2_*`, en cada generación de un **nuevo curso** se asegura la ex
 - Objeto marcador: `.keep`
 
 Esto evita colisiones entre nombres similares y mantiene el almacenamiento organizado por curso.
+
+## Carpetas locales por curso (opcional)
+
+Si configuras `LOCAL_COURSE_ROOT_DIR`, en cada generación de un **nuevo curso** la app crea/asegura una carpeta local con el nombre del curso (sanitizado).
+
+Ejemplo:
+
+- `LOCAL_COURSE_ROOT_DIR="/Users/johnviracacha/Documents/New project/Cursos_Story"`
 
 ## Pruebas
 

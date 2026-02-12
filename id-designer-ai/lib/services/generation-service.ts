@@ -12,6 +12,7 @@ import { extractJsonObject, tryParseJson } from "@/lib/utils/json";
 import { parseStoredJson } from "@/lib/utils/json-store";
 import { evaluateInstructionalQuality, QualityReport } from "@/lib/validators/quality";
 import { GenerateRequest } from "@/lib/validators/input";
+import { ensureCourseFolderLocal } from "@/lib/local/course-folders";
 import { ensureCourseFolderInR2 } from "@/lib/r2/course-folders";
 import {
   InstructionalDesignOutput,
@@ -230,7 +231,33 @@ export async function generateAndStoreVersion(
   const safetyMode = request.options.safetyMode;
 
   if (request.requestType === "new") {
-    hooks?.onStage?.("storage", "Organizando carpeta del curso en Cloudflare R2 (si está configurado).");
+    hooks?.onStage?.("storage", "Organizando carpeta del curso (local/R2 si está configurado).");
+    try {
+      const result = await ensureCourseFolderLocal(request.project.name);
+      console.info(
+        JSON.stringify({
+          level: "info",
+          event: "local.course_folder.ensure",
+          courseName: request.project.name,
+          enabled: result.enabled,
+          skipped: result.skipped,
+          folderPath: "folderPath" in result ? result.folderPath : null,
+          reason: "reason" in result ? result.reason : null
+        })
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Error desconocido";
+      console.error(
+        JSON.stringify({
+          level: "error",
+          event: "local.course_folder.error",
+          courseName: request.project.name,
+          message
+        })
+      );
+      // Best-effort: do not block core generation if local storage is unavailable.
+    }
+
     try {
       const result = await ensureCourseFolderInR2(request.project.name);
       console.info(
