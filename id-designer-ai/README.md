@@ -12,9 +12,13 @@ Aplicación web profesional para generar diseño instruccional con IA (Gemini AP
 
 ## Funcionalidades implementadas
 
-- Nuevo proyecto instruccional desde brief completo
+- Nuevo proyecto para **guion técnico instruccional (storyboard de OVA)** desde archivo base (texto, PDF, DOCX, PPTX o imágenes)
+- Estrategia de guionización configurable (material base):
+- `Mantener todo el contenido`: guioniza sin omitir (requiere material base no truncado)
+- `Analizar y proponer storyboard`: reorganiza y propone una secuencia didáctica
 - Generación IA en JSON estricto con validación Zod
 - Repair pass automático (1 intento) si la IA responde JSON inválido
+- Extracción de texto server-side para archivos base (PDF/DOCX/PPTX) y análisis de imágenes vía Gemini (sin exponer API key)
 - Vista de resultados con:
   - mapa instruccional
   - outcomes por Bloom
@@ -41,6 +45,7 @@ id-designer-ai/
     api/
       generate/route.ts
       generate/stream/route.ts
+      material/extract/route.ts
       login/route.ts
       logout/route.ts
       versions/[id]/export/route.ts

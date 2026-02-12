@@ -25,6 +25,17 @@ function modeLabel(mode: string): string {
   }
 }
 
+function baseMaterialStrategyLabel(strategy: string): string {
+  switch (strategy) {
+    case "keep_all":
+      return "Mantener todo el contenido del material base (sin omitir) y guionizarlo";
+    case "analyze_storyboard":
+      return "Analizar el material base y proponer un storyboard para abordar sus temáticas";
+    default:
+      return "Analizar el material base y proponer un storyboard";
+  }
+}
+
 export function buildUserPrompt(request: GenerateRequest, previousJson?: unknown): string {
   if (request.requestType === "new") {
     const { project, options } = request;
@@ -33,11 +44,18 @@ export function buildUserPrompt(request: GenerateRequest, previousJson?: unknown
         ? `\n\nMaterial base provisto por el usuario (usar como insumo, no copiar literal si no aplica):\n- Archivo: ${project.baseMaterial.filename}\n- Tipo: ${project.baseMaterial.mimeType}\n- Contenido:\n<<<\n${project.baseMaterial.content}\n>>>\n\nRegla adicional:\n- Si el material base entra en conflicto con el brief, prioriza el brief y registra el conflicto en production_notes.risks.\n`
         : "";
 
+    const strategy = project.baseMaterialStrategy ?? "analyze_storyboard";
+    const strategyGuidance =
+      strategy === "keep_all"
+        ? `\nReglas adicionales por estrategia (keep_all):\n- Debes conservar TODO el contenido del material base (ideas, títulos, listas, numeraciones y ejemplos). No omitas nada.\n- Puedes resegmentar y reescribir para guionizar, pero cada fragmento del material debe estar representado en el storyboard.\n- Respeta el orden general del material base. Si reordenas por claridad, justifica el cambio en production_notes.risks.\n- No inventes contenido que no esté en el material base (salvo conectores mínimos, instrucciones de interacción y notas de producción).\n`
+        : `\nReglas adicionales por estrategia (analyze_storyboard):\n- Analiza el material base, identifica temas y propone una secuencia didáctica (storyboard) clara y accionable.\n- Puedes reorganizar, agrupar y sintetizar; evita copiar literal si no es necesario.\n- No inventes datos, citas o fuentes. Si falta información, registra preguntas en production_notes.risks.\n`;
+
     return `Genera un diseño instruccional con estas entradas:
 - Tipo de plantilla: ${templateLabel(options.template)}
 - Modo: ${modeLabel(options.mode)}
 - Curso: ${project.name}
 - Recurso: ${project.resourceNumber} - ${project.resourceName}
+- Estrategia de guionización con material base: ${baseMaterialStrategyLabel(strategy)}
 - Formato sugerido para project.title: "${project.name} — Recurso ${project.resourceNumber}: ${project.resourceName}"
 - Audiencia: ${project.audience}
 - Nivel: ${project.level}
@@ -62,6 +80,7 @@ Instrucciones de guardrail:
   - Interacción (si aplica)
   - Recursos multimedia sugeridos (placeholders)
   - Duración estimada por escena
+${strategyGuidance}
 
 Devuelve JSON estricto con este schema exacto:
 ${outputSchemaForPrompt}`;

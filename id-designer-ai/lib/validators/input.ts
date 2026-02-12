@@ -20,11 +20,15 @@ export const GenerationScopeSchema = z.enum([
 
 export const GenerationModeSchema = z.enum(["full", "evaluation-only", "ova-storyboard"]);
 
+export const BaseMaterialStrategySchema = z.enum(["keep_all", "analyze_storyboard"]);
+
+const BASE_MATERIAL_MAX_CHARS = 30_000;
+
 const BaseMaterialSchema = z
   .object({
     filename: z.string().min(1).max(200),
     mimeType: z.string().min(1).max(120),
-    content: z.string().min(1).max(30_000)
+    content: z.string().min(1).max(BASE_MATERIAL_MAX_CHARS)
   })
   .strict();
 
@@ -33,6 +37,7 @@ const ProjectBriefSchema = z
     name: z.string().min(3).max(120),
     resourceNumber: z.string().min(1).max(50),
     resourceName: z.string().min(2).max(200),
+    baseMaterialStrategy: BaseMaterialStrategySchema.default("analyze_storyboard"),
     audience: z.string().min(3).max(300).default("No especificada"),
     level: z.string().min(2).max(100).default("No especificado"),
     durationHours: z.coerce.number().positive().max(300),
@@ -76,10 +81,33 @@ const RefineRequestSchema = z
   })
   .strict();
 
-export const GenerateRequestSchema = z.discriminatedUnion("requestType", [
-  NewRequestSchema,
-  RefineRequestSchema
-]);
+const GenerateRequestSchemaBase = z.discriminatedUnion("requestType", [NewRequestSchema, RefineRequestSchema]);
+
+export const GenerateRequestSchema = GenerateRequestSchemaBase.superRefine((data, ctx) => {
+  if (data.requestType !== "new") {
+    return;
+  }
+
+  const baseContent = data.project.baseMaterial?.content?.trim() ?? "";
+
+  if (data.options.mode === "ova-storyboard" && baseContent.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["project", "baseMaterial", "content"],
+      message: "El material base es obligatorio para generar un guion técnico instruccional."
+    });
+  }
+
+  if (data.project.baseMaterialStrategy === "keep_all" && baseContent.length >= BASE_MATERIAL_MAX_CHARS) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["project", "baseMaterialStrategy"],
+      message:
+        "La estrategia 'mantener todo el contenido' requiere que el material base no esté truncado. " +
+        `Reduce el contenido a menos de ${BASE_MATERIAL_MAX_CHARS.toLocaleString("es-ES")} caracteres o divide el archivo.`
+    });
+  }
+});
 
 export type GenerateRequest = z.infer<typeof GenerateRequestSchema>;
 export type ProjectBrief = z.infer<typeof ProjectBriefSchema>;

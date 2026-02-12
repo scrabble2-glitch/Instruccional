@@ -87,6 +87,7 @@ describe("Versionado en DB", () => {
         name: "Proyecto de prueba",
         resourceNumber: "R01",
         resourceName: "Introducción",
+        baseMaterialStrategy: "analyze_storyboard",
         audience: "Equipo QA",
         level: "Intermedio",
         durationHours: 6,

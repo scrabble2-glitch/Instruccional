@@ -22,6 +22,7 @@ interface FormState {
   baseMaterialFilename: string;
   baseMaterialMimeType: string;
   baseMaterialContent: string;
+  baseMaterialStrategy: "keep_all" | "analyze_storyboard";
 }
 
 const DEFAULT_FORM: FormState = {
@@ -32,6 +33,7 @@ const DEFAULT_FORM: FormState = {
   baseMaterialFilename: "",
   baseMaterialMimeType: "",
   baseMaterialContent: "",
+  baseMaterialStrategy: "analyze_storyboard",
 };
 
 const BASE_MATERIAL_MAX_CHARS = 30_000;
@@ -72,14 +74,24 @@ export function NewProjectForm() {
   } | null>(null);
   const router = useRouter();
 
+  const baseMaterialText = form.baseMaterialContent.trim();
+  const keepAll = form.baseMaterialStrategy === "keep_all";
+  const keepAllWouldOmit = keepAll
+    ? baseMaterialMeta
+      ? baseMaterialMeta.truncated
+      : form.baseMaterialContent.length >= BASE_MATERIAL_MAX_CHARS
+    : false;
+
   const disabled = useMemo(
     () =>
       loading ||
       baseMaterialLoading ||
+      !baseMaterialText ||
+      keepAllWouldOmit ||
       !form.name.trim() ||
       !form.resourceNumber.trim() ||
       !form.resourceName.trim(),
-    [baseMaterialLoading, form, loading]
+    [baseMaterialLoading, baseMaterialText, form, keepAllWouldOmit, loading]
   );
 
   function clearBaseMaterial() {
@@ -194,6 +206,20 @@ export function NewProjectForm() {
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+
+    if (!baseMaterialText) {
+      setError("Agrega un archivo base o pega el contenido antes de generar el guion.");
+      return;
+    }
+
+    if (keepAllWouldOmit) {
+      setError(
+        "La estrategia 'mantener todo el contenido' requiere que el material base no esté truncado. " +
+          "Divide el archivo en partes más pequeñas o reduce el contenido hasta que quepa completo."
+      );
+      return;
+    }
+
     setLoading(true);
     setRequestId(null);
     setLiveSummary(null);
@@ -221,6 +247,7 @@ export function NewProjectForm() {
         name: form.name,
         resourceNumber: form.resourceNumber,
         resourceName: form.resourceName,
+        baseMaterialStrategy: form.baseMaterialStrategy,
         durationHours: Number(form.durationHours),
         baseMaterial
       },
@@ -478,12 +505,60 @@ export function NewProjectForm() {
         </div>
 
         <div>
+          <label className="label">Estrategia de guionización</label>
+          <div className="mt-1 grid gap-2">
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm">
+              <input
+                type="radio"
+                name="baseMaterialStrategy"
+                value="keep_all"
+                checked={form.baseMaterialStrategy === "keep_all"}
+                onChange={() => setForm((prev) => ({ ...prev, baseMaterialStrategy: "keep_all" }))}
+                className="mt-0.5"
+              />
+              <div>
+                <p className="font-medium text-slate-900">1) Mantener todo el contenido y guionizar</p>
+                <p className="mt-1 text-xs text-slate-600">
+                  No se omite nada del material base. Se guioniza sección por sección y se respeta el orden general.
+                </p>
+              </div>
+            </label>
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm">
+              <input
+                type="radio"
+                name="baseMaterialStrategy"
+                value="analyze_storyboard"
+                checked={form.baseMaterialStrategy === "analyze_storyboard"}
+                onChange={() => setForm((prev) => ({ ...prev, baseMaterialStrategy: "analyze_storyboard" }))}
+                className="mt-0.5"
+              />
+              <div>
+                <p className="font-medium text-slate-900">2) Analizar y proponer storyboard</p>
+                <p className="mt-1 text-xs text-slate-600">
+                  Se analiza el material base y se propone una secuencia didáctica clara. Puede reorganizar, agrupar y
+                  sintetizar.
+                </p>
+              </div>
+            </label>
+          </div>
+
+          {keepAllWouldOmit ? (
+            <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Aviso: el contenido actual parece estar truncado. Para la opción 1, divide el documento en partes más
+              pequeñas o reduce el contenido.
+            </p>
+          ) : null}
+        </div>
+
+        <div>
           <label className="label">Contenido del material base (editable)</label>
           <textarea
             className="field min-h-[140px]"
             value={form.baseMaterialContent}
             onChange={(event) => {
               const next = event.target.value.slice(0, BASE_MATERIAL_MAX_CHARS);
+              setBaseMaterialMeta(null);
               setForm((prev) => ({
                 ...prev,
                 baseMaterialFilename: prev.baseMaterialFilename || "material-base.txt",
