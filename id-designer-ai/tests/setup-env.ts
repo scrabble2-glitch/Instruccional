@@ -1,0 +1,12 @@
+process.env.NODE_ENV = "test";
+process.env.DATABASE_URL = process.env.DATABASE_URL ?? "file:./test.db";
+process.env.APP_URL = process.env.APP_URL ?? "http://localhost:3000";
+process.env.SINGLE_USER_PASSWORD = process.env.SINGLE_USER_PASSWORD ?? "clave-segura-test";
+process.env.SESSION_SECRET = process.env.SESSION_SECRET ?? "session-secret-muy-seguro-para-tests";
+process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? "test-key";
+process.env.GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+process.env.DEFAULT_SAFETY_MODE = process.env.DEFAULT_SAFETY_MODE ?? "normal";
+process.env.CACHE_TTL_MINUTES = process.env.CACHE_TTL_MINUTES ?? "1440";
+process.env.RATE_LIMIT_PER_MINUTE = process.env.RATE_LIMIT_PER_MINUTE ?? "20";
+process.env.INPUT_TOKEN_COST_PER_MILLION = process.env.INPUT_TOKEN_COST_PER_MILLION ?? "0.10";
+process.env.OUTPUT_TOKEN_COST_PER_MILLION = process.env.OUTPUT_TOKEN_COST_PER_MILLION ?? "0.40";

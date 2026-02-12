@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+*.log
+.env
+.env.local
+.env.production
+.env.test.local
+prisma/dev.db
+prisma/dev.db-journal
+test.db
+test.db-journal
+coverage
+.vercel
