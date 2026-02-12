@@ -134,20 +134,25 @@ export async function POST(request: Request): Promise<Response> {
             })
           );
         } catch (error) {
+          const rawMessage = error instanceof Error ? error.message : "Error desconocido";
+          const publicMessage = rawMessage.includes("GEMINI_API_KEY")
+            ? rawMessage
+            : "No fue posible generar el diseño instruccional. Revisa los parámetros e intenta de nuevo.";
+
           console.error(
             JSON.stringify({
               level: "error",
               event: "generate.stream.error",
               requestId,
               ip,
-              message: error instanceof Error ? error.message : "Error desconocido",
+              message: rawMessage,
               elapsedMs: Date.now() - startedAt
             })
           );
 
           send("error", {
             requestId,
-            error: "No fue posible generar el diseño instruccional. Revisa los parámetros e intenta de nuevo."
+            error: publicMessage
           });
         } finally {
           controller.close();

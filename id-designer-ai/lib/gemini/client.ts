@@ -40,6 +40,12 @@ function resolveSafetySettings(mode: SafetyMode): Array<Record<string, string>> 
 export async function callGeminiGenerateContent(
   params: GeminiGenerateParams
 ): Promise<GeminiGenerateResult> {
+  if (!env.GEMINI_API_KEY) {
+    throw new Error(
+      "GEMINI_API_KEY no está configurada. Define la variable de entorno para habilitar generación con IA."
+    );
+  }
+
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${params.model}:generateContent`;
 
   const response = await fetch(endpoint, {

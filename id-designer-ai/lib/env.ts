@@ -6,7 +6,9 @@ const EnvSchema = z.object({
   APP_URL: z.string().url().default("http://localhost:3000"),
   SINGLE_USER_PASSWORD: z.string().min(8),
   SESSION_SECRET: z.string().min(16),
-  GEMINI_API_KEY: z.string().min(1),
+  // Allow booting the app (login, UI, DB) without Gemini configured.
+  // Generation endpoints must validate it's present before calling Gemini.
+  GEMINI_API_KEY: z.string().default(""),
   GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
   DEFAULT_SAFETY_MODE: z.enum(["normal", "estricto"]).default("normal"),
   CACHE_TTL_MINUTES: z.coerce.number().int().positive().default(1440),
