@@ -5,6 +5,11 @@ import { generateAndStoreVersion } from "@/lib/services/generation-service";
 import { getClientIp, getRequestId, jsonResponse } from "@/lib/utils/request";
 import { GenerateRequestSchema, sanitizeGeneratePayload } from "@/lib/validators/input";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+// Generación con IA puede tardar; en Vercel permite elevar el timeout por función.
+export const maxDuration = 60;
+
 function formatZodError(error: ZodError): string[] {
   return error.issues.map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`);
 }

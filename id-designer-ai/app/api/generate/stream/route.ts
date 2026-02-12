@@ -7,6 +7,7 @@ import { GenerateRequestSchema, sanitizeGeneratePayload } from "@/lib/validators
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 function formatZodError(error: ZodError): string[] {
   return error.issues.map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`);

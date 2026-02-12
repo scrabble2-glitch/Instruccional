@@ -8,6 +8,7 @@ import { sanitizeMultilineText, sanitizeOptionalText } from "@/lib/utils/sanitiz
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const ResponseSchema = z
   .object({
@@ -139,4 +140,3 @@ export async function POST(request: Request): Promise<Response> {
     return jsonResponse({ error: publicMessage, requestId }, 400, { "x-request-id": requestId });
   }
 }
-
