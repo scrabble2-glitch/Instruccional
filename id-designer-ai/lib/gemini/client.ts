@@ -94,3 +94,74 @@ export async function callGeminiGenerateContent(
     usage: data.usageMetadata
   };
 }
+
+interface GeminiExtractParams {
+  model: string;
+  safetyMode: SafetyMode;
+  instruction: string;
+  mimeType: string;
+  dataBase64: string;
+}
+
+export async function callGeminiExtractTextFromMedia(params: GeminiExtractParams): Promise<GeminiGenerateResult> {
+  if (!env.GEMINI_API_KEY) {
+    throw new Error(
+      "GEMINI_API_KEY no está configurada. Define la variable de entorno para extraer texto de documentos/imágenes."
+    );
+  }
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${params.model}:generateContent`;
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": env.GEMINI_API_KEY
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: params.instruction },
+            {
+              inlineData: {
+                mimeType: params.mimeType,
+                data: params.dataBase64
+              }
+            }
+          ]
+        }
+      ],
+      safetySettings: resolveSafetySettings(params.safetyMode),
+      generationConfig: {
+        temperature: 0.0
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini error (${response.status}): ${errorText.slice(0, 500)}`);
+  }
+
+  const data = (await response.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    usageMetadata?: GeminiUsage;
+  };
+
+  const rawText =
+    data.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text ?? "")
+      .join("\n")
+      .trim() ?? "";
+
+  if (!rawText) {
+    throw new Error("Gemini respondió sin contenido de texto para la extracción.");
+  }
+
+  return {
+    rawText,
+    usage: data.usageMetadata
+  };
+}

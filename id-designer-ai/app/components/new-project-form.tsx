@@ -59,7 +59,7 @@ const DEFAULT_FORM: FormState = {
 };
 
 const BASE_MATERIAL_MAX_CHARS = 30_000;
-const BASE_MATERIAL_MAX_BYTES = 200_000;
+const BASE_MATERIAL_MAX_BYTES = 2_000_000;
 
 function toStageLabel(stage: string): string {
   const map: Record<string, string> = {
@@ -83,6 +83,8 @@ export function NewProjectForm() {
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [baseMaterialLoading, setBaseMaterialLoading] = useState(false);
+  const [baseMaterialMeta, setBaseMaterialMeta] = useState<{ kind: string; truncated: boolean } | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [liveProgress, setLiveProgress] = useState<LiveProgressEvent[]>([]);
   const [liveSummary, setLiveSummary] = useState<{
@@ -94,7 +96,10 @@ export function NewProjectForm() {
   } | null>(null);
   const router = useRouter();
 
-  const disabled = useMemo(() => loading || !form.name || !form.generalObjectives, [form, loading]);
+  const disabled = useMemo(
+    () => loading || baseMaterialLoading || !form.name || !form.generalObjectives,
+    [baseMaterialLoading, form, loading]
+  );
 
   function clearBaseMaterial() {
     setForm((prev) => ({
@@ -103,6 +108,7 @@ export function NewProjectForm() {
       baseMaterialMimeType: "",
       baseMaterialContent: ""
     }));
+    setBaseMaterialMeta(null);
   }
 
   async function onBaseFileSelected(event: ChangeEvent<HTMLInputElement>) {
@@ -115,11 +121,29 @@ export function NewProjectForm() {
     }
 
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-    const allowedExtensions = new Set(["txt", "md", "markdown", "json"]);
-    const allowedMimeTypes = new Set(["text/plain", "text/markdown", "application/json"]);
+    const allowedTextExtensions = new Set(["txt", "md", "markdown", "json", "csv", "rtf", "html", "htm"]);
+    const allowedTextMimeTypes = new Set(["text/plain", "text/markdown", "application/json", "text/csv", "application/rtf"]);
 
-    if (file.type && !allowedMimeTypes.has(file.type) && !allowedExtensions.has(ext)) {
-      setError("Formato no soportado. Sube un archivo .txt, .md o .json.");
+    const allowedBinaryExtensions = new Set(["pdf", "docx", "pptx", "png", "jpg", "jpeg", "webp", "gif"]);
+    const allowedBinaryMimeTypes = new Set([
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "image/png",
+      "image/jpeg",
+      "image/webp",
+      "image/gif"
+    ]);
+
+    const isTextLike =
+      (file.type && (file.type.startsWith("text/") || allowedTextMimeTypes.has(file.type))) || allowedTextExtensions.has(ext);
+
+    const isBinarySupported =
+      (file.type && (allowedBinaryMimeTypes.has(file.type) || file.type.startsWith("image/"))) ||
+      allowedBinaryExtensions.has(ext);
+
+    if (!isTextLike && !isBinarySupported) {
+      setError("Formato no soportado. Usa PDF, DOCX, PPTX, texto (.txt/.md/.json) o imágenes (PNG/JPG/WEBP).");
       return;
     }
 
@@ -128,21 +152,61 @@ export function NewProjectForm() {
       return;
     }
 
+    setError(null);
+    setBaseMaterialLoading(true);
+    setBaseMaterialMeta(null);
+
     try {
-      const text = await file.text();
-      if (text.length > BASE_MATERIAL_MAX_CHARS) {
-        setError(`Contenido demasiado largo. Máximo ${BASE_MATERIAL_MAX_CHARS} caracteres.`);
+      if (isTextLike) {
+        const text = await file.text();
+        if (text.length > BASE_MATERIAL_MAX_CHARS) {
+          setError(`Contenido demasiado largo. Máximo ${BASE_MATERIAL_MAX_CHARS} caracteres.`);
+          return;
+        }
+
+        setForm((prev) => ({
+          ...prev,
+          baseMaterialFilename: file.name,
+          baseMaterialMimeType: file.type || "text/plain",
+          baseMaterialContent: text
+        }));
+        setBaseMaterialMeta({ kind: "text", truncated: false });
         return;
       }
 
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/material/extract", {
+        method: "POST",
+        body: formData
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        setError(payload?.error ?? "No fue posible extraer contenido del archivo.");
+        return;
+      }
+
+      const payload = (await response.json()) as {
+        filename: string;
+        mimeType: string;
+        content: string;
+        truncated: boolean;
+        kind: string;
+      };
+
       setForm((prev) => ({
         ...prev,
-        baseMaterialFilename: file.name,
-        baseMaterialMimeType: file.type || "text/plain",
-        baseMaterialContent: text
+        baseMaterialFilename: payload.filename || file.name,
+        baseMaterialMimeType: payload.mimeType || file.type || "application/octet-stream",
+        baseMaterialContent: payload.content || ""
       }));
+      setBaseMaterialMeta({ kind: payload.kind, truncated: Boolean(payload.truncated) });
     } catch {
-      setError("No fue posible leer el archivo. Intenta nuevamente.");
+      setError("Error de red al procesar el archivo base.");
+    } finally {
+      setBaseMaterialLoading(false);
     }
   }
 
@@ -489,12 +553,12 @@ export function NewProjectForm() {
                 htmlFor="base-material-file"
                 className="cursor-pointer rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-100"
               >
-                Seleccionar archivo
+                {baseMaterialLoading ? "Procesando..." : "Seleccionar archivo"}
               </label>
               <input
                 id="base-material-file"
                 type="file"
-                accept=".txt,.md,.markdown,.json,text/plain,text/markdown,application/json"
+                accept=".txt,.md,.markdown,.json,.csv,.rtf,.html,.htm,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.webp,.gif,text/plain,text/markdown,application/json,text/csv,application/rtf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/*"
                 className="hidden"
                 onChange={onBaseFileSelected}
               />
@@ -511,13 +575,23 @@ export function NewProjectForm() {
 
             <p className="mt-2 text-xs text-slate-600">
               Formatos soportados: <span className="font-mono">.txt</span>, <span className="font-mono">.md</span>,{" "}
-              <span className="font-mono">.json</span>. Máximo {Math.round(BASE_MATERIAL_MAX_BYTES / 1000)} KB y{" "}
+              <span className="font-mono">.json</span>, <span className="font-mono">.pdf</span>,{" "}
+              <span className="font-mono">.docx</span>, <span className="font-mono">.pptx</span>,{" "}
+              imágenes (<span className="font-mono">.png</span>, <span className="font-mono">.jpg</span>,{" "}
+              <span className="font-mono">.webp</span>). Máximo {Math.round(BASE_MATERIAL_MAX_BYTES / 1000)} KB y{" "}
               {BASE_MATERIAL_MAX_CHARS.toLocaleString("es-ES")} caracteres.
             </p>
 
             {form.baseMaterialFilename ? (
               <p className="mt-2 text-xs text-slate-700">
                 Archivo cargado: <span className="font-mono">{form.baseMaterialFilename}</span>
+              </p>
+            ) : null}
+
+            {baseMaterialMeta ? (
+              <p className="mt-1 text-xs text-slate-600">
+                Tipo detectado: <span className="font-mono">{baseMaterialMeta.kind}</span>
+                {baseMaterialMeta.truncated ? " (contenido truncado)" : ""}
               </p>
             ) : null}
           </div>
