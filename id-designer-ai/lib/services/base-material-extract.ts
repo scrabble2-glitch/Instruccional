@@ -122,7 +122,7 @@ async function extractPptxText(buffer: Buffer): Promise<string> {
     .filter((name) => name.startsWith("ppt/slides/slide") && name.endsWith(".xml"))
     .sort((a, b) => {
       const getIndex = (value: string) => {
-        const match = value.match(/slide(\\d+)\\.xml$/);
+        const match = value.match(/slide(\d+)\.xml$/);
         return match ? Number(match[1]) : 0;
       };
       return getIndex(a) - getIndex(b);
@@ -133,7 +133,7 @@ async function extractPptxText(buffer: Buffer): Promise<string> {
     const file = zip.file(slideName);
     if (!file) continue;
     const xml = (await file.async("text")) as string;
-    const matches = xml.matchAll(/<a:t>([\\s\\S]*?)<\\/a:t>/g);
+    const matches = xml.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g);
     for (const match of matches) {
       const raw = match[1] ?? "";
       const decoded = decodeXmlEntities(raw).trim();
