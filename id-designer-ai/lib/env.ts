@@ -14,7 +14,14 @@ const EnvSchema = z.object({
   CACHE_TTL_MINUTES: z.coerce.number().int().positive().default(1440),
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(20),
   INPUT_TOKEN_COST_PER_MILLION: z.coerce.number().nonnegative().default(0.1),
-  OUTPUT_TOKEN_COST_PER_MILLION: z.coerce.number().nonnegative().default(0.4)
+  OUTPUT_TOKEN_COST_PER_MILLION: z.coerce.number().nonnegative().default(0.4),
+  // Cloudflare R2 (S3 compatible) - optional
+  R2_ACCOUNT_ID: z.string().default(""),
+  R2_ACCESS_KEY_ID: z.string().default(""),
+  R2_SECRET_ACCESS_KEY: z.string().default(""),
+  R2_BUCKET: z.string().default(""),
+  R2_PREFIX_BASE: z.string().default("cursos"),
+  R2_REGION: z.string().default("auto")
 });
 
 export const env = EnvSchema.parse({
@@ -29,7 +36,13 @@ export const env = EnvSchema.parse({
   CACHE_TTL_MINUTES: process.env.CACHE_TTL_MINUTES,
   RATE_LIMIT_PER_MINUTE: process.env.RATE_LIMIT_PER_MINUTE,
   INPUT_TOKEN_COST_PER_MILLION: process.env.INPUT_TOKEN_COST_PER_MILLION,
-  OUTPUT_TOKEN_COST_PER_MILLION: process.env.OUTPUT_TOKEN_COST_PER_MILLION
+  OUTPUT_TOKEN_COST_PER_MILLION: process.env.OUTPUT_TOKEN_COST_PER_MILLION,
+  R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
+  R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
+  R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
+  R2_BUCKET: process.env.R2_BUCKET,
+  R2_PREFIX_BASE: process.env.R2_PREFIX_BASE,
+  R2_REGION: process.env.R2_REGION
 });
 
 export type SafetyMode = "normal" | "estricto";

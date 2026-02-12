@@ -9,6 +9,7 @@
 - [ ] Configurar `GEMINI_API_KEY` solo server-side
 - [ ] Configurar `DATABASE_URL` (para pruebas rápidas: `file:/tmp/dev.db`; para persistencia real: DB externa)
 - [ ] Ajustar costos/tokens por modelo en env
+- [ ] (Opcional) Configurar Cloudflare R2 (`R2_*`) para organización por “carpetas” por curso
 - [ ] Ejecutar `npm run prisma:generate`
 - [ ] Ejecutar migraciones en entorno destino
 - [ ] Ejecutar `npm run test`

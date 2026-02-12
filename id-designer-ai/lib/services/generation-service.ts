@@ -12,6 +12,7 @@ import { extractJsonObject, tryParseJson } from "@/lib/utils/json";
 import { parseStoredJson } from "@/lib/utils/json-store";
 import { evaluateInstructionalQuality, QualityReport } from "@/lib/validators/quality";
 import { GenerateRequest } from "@/lib/validators/input";
+import { ensureCourseFolderInR2 } from "@/lib/r2/course-folders";
 import {
   InstructionalDesignOutput,
   InstructionalDesignOutputSchema
@@ -227,6 +228,35 @@ export async function generateAndStoreVersion(
 
   const model = request.options.model ?? env.GEMINI_MODEL;
   const safetyMode = request.options.safetyMode;
+
+  if (request.requestType === "new") {
+    hooks?.onStage?.("storage", "Organizando carpeta del curso en Cloudflare R2 (si está configurado).");
+    try {
+      const result = await ensureCourseFolderInR2(request.project.name);
+      console.info(
+        JSON.stringify({
+          level: "info",
+          event: "r2.course_folder.ensure",
+          courseName: request.project.name,
+          enabled: result.enabled,
+          skipped: result.skipped,
+          prefix: "prefix" in result ? result.prefix : null,
+          reason: "reason" in result ? result.reason : null
+        })
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Error desconocido";
+      console.error(
+        JSON.stringify({
+          level: "error",
+          event: "r2.course_folder.error",
+          courseName: request.project.name,
+          message
+        })
+      );
+      // Best-effort: do not block core generation if R2 is unavailable.
+    }
+  }
 
   hooks?.onStage?.("validating", "Preparando contexto de generación.");
   const context = await buildGenerationContext(request);

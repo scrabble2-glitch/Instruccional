@@ -127,6 +127,9 @@ Referencia completa en `.env.example`.
 - `CACHE_TTL_MINUTES`: TTL del cache
 - `RATE_LIMIT_PER_MINUTE`: límite por IP
 - `INPUT_TOKEN_COST_PER_MILLION` / `OUTPUT_TOKEN_COST_PER_MILLION`: costos aproximados
+- `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`: credenciales Cloudflare R2 (solo server)
+- `R2_BUCKET`: bucket de R2
+- `R2_PREFIX_BASE`: prefijo base para “carpetas” por curso (default `cursos/`)
 
 ## Comandos
 
@@ -167,6 +170,8 @@ npx vercel link
 - `DEFAULT_SAFETY_MODE=normal`
 - `CACHE_TTL_MINUTES=1440`
 - `RATE_LIMIT_PER_MINUTE=20`
+- (Opcional) Variables R2 para organizar proyectos en Cloudflare R2:
+- `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PREFIX_BASE=cursos`, `R2_REGION=auto`
 
 4. Deploy:
 
@@ -205,6 +210,15 @@ Resumen (detalle en `docs/security.md`):
 - Control de tamaño de payload
 - Safety settings configurables
 - Mensajes de error claros sin filtrar secretos
+
+## Cloudflare R2 (opcional)
+
+Si configuras `R2_*`, en cada generación de un **nuevo curso** se asegura la existencia de una “carpeta” (prefijo) en R2.
+
+- Prefijo creado: `${R2_PREFIX_BASE}/<slug>-<hash>/`
+- Objeto marcador: `.keep`
+
+Esto evita colisiones entre nombres similares y mantiene el almacenamiento organizado por curso.
 
 ## Pruebas
 

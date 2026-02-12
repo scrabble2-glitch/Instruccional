@@ -44,6 +44,7 @@ function toStageLabel(stage: string): string {
     queued: "En cola",
     accepted: "Aceptado",
     validating: "Validación",
+    storage: "Almacenamiento (R2)",
     cache_lookup: "Consulta de caché",
     cache_hit: "Caché encontrada",
     cache_miss: "Sin caché",
