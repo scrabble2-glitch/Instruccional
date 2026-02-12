@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { env } from "@/lib/env";
-import { sanitizeOptionalText, sanitizeText } from "@/lib/utils/sanitize";
+import { sanitizeOptionalMultilineText, sanitizeOptionalText, sanitizeText } from "@/lib/utils/sanitize";
 
 export const GenerationTemplateSchema = z.enum([
   "general",
@@ -20,6 +20,14 @@ export const GenerationScopeSchema = z.enum([
 
 export const GenerationModeSchema = z.enum(["full", "evaluation-only", "ova-storyboard"]);
 
+const BaseMaterialSchema = z
+  .object({
+    filename: z.string().min(1).max(200),
+    mimeType: z.string().min(1).max(120),
+    content: z.string().min(1).max(30_000)
+  })
+  .strict();
+
 const ProjectBriefSchema = z
   .object({
     name: z.string().min(3).max(120),
@@ -32,6 +40,7 @@ const ProjectBriefSchema = z
     availableResources: z.string().max(4000).optional(),
     pedagogicalApproach: z.string().max(1200).optional(),
     evaluationApproach: z.string().max(1200).optional(),
+    baseMaterial: BaseMaterialSchema.optional(),
     language: z.string().min(2).max(60).default("español"),
     tone: z.string().min(2).max(60).default("profesional")
   })
@@ -85,6 +94,23 @@ export function sanitizeGeneratePayload(payload: unknown): unknown {
   if (payload && typeof payload === "object") {
     return Object.entries(payload).reduce<Record<string, unknown>>((acc, [key, value]) => {
       if (value === null || value === undefined) {
+        return acc;
+      }
+
+      if (key === "baseMaterial" && value && typeof value === "object" && !Array.isArray(value)) {
+        const record = value as Record<string, unknown>;
+        const filename = typeof record.filename === "string" ? sanitizeOptionalText(record.filename) : undefined;
+        const mimeType = typeof record.mimeType === "string" ? sanitizeOptionalText(record.mimeType) : undefined;
+        const content = typeof record.content === "string" ? sanitizeOptionalMultilineText(record.content) : undefined;
+
+        const sanitized: Record<string, unknown> = {};
+        if (filename !== undefined) sanitized.filename = filename;
+        if (mimeType !== undefined) sanitized.mimeType = mimeType;
+        if (content !== undefined) sanitized.content = content;
+
+        if (Object.keys(sanitized).length > 0) {
+          acc[key] = sanitized;
+        }
         return acc;
       }
 

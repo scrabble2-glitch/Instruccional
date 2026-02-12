@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type GenerateSuccess = {
@@ -25,6 +25,9 @@ interface FormState {
   availableResources: string;
   pedagogicalApproach: string;
   evaluationApproach: string;
+  baseMaterialFilename: string;
+  baseMaterialMimeType: string;
+  baseMaterialContent: string;
   language: string;
   tone: string;
   model: string;
@@ -44,6 +47,9 @@ const DEFAULT_FORM: FormState = {
   availableResources: "",
   pedagogicalApproach: "",
   evaluationApproach: "",
+  baseMaterialFilename: "",
+  baseMaterialMimeType: "",
+  baseMaterialContent: "",
   language: "español",
   tone: "profesional",
   model: "gemini-2.5-flash",
@@ -51,6 +57,9 @@ const DEFAULT_FORM: FormState = {
   template: "general",
   mode: "full"
 };
+
+const BASE_MATERIAL_MAX_CHARS = 30_000;
+const BASE_MATERIAL_MAX_BYTES = 200_000;
 
 function toStageLabel(stage: string): string {
   const map: Record<string, string> = {
@@ -87,6 +96,56 @@ export function NewProjectForm() {
 
   const disabled = useMemo(() => loading || !form.name || !form.generalObjectives, [form, loading]);
 
+  function clearBaseMaterial() {
+    setForm((prev) => ({
+      ...prev,
+      baseMaterialFilename: "",
+      baseMaterialMimeType: "",
+      baseMaterialContent: ""
+    }));
+  }
+
+  async function onBaseFileSelected(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    // Allow picking the same file twice by clearing the input.
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const allowedExtensions = new Set(["txt", "md", "markdown", "json"]);
+    const allowedMimeTypes = new Set(["text/plain", "text/markdown", "application/json"]);
+
+    if (file.type && !allowedMimeTypes.has(file.type) && !allowedExtensions.has(ext)) {
+      setError("Formato no soportado. Sube un archivo .txt, .md o .json.");
+      return;
+    }
+
+    if (file.size > BASE_MATERIAL_MAX_BYTES) {
+      setError(`Archivo demasiado grande. Máximo ${Math.round(BASE_MATERIAL_MAX_BYTES / 1000)} KB.`);
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      if (text.length > BASE_MATERIAL_MAX_CHARS) {
+        setError(`Contenido demasiado largo. Máximo ${BASE_MATERIAL_MAX_CHARS} caracteres.`);
+        return;
+      }
+
+      setForm((prev) => ({
+        ...prev,
+        baseMaterialFilename: file.name,
+        baseMaterialMimeType: file.type || "text/plain",
+        baseMaterialContent: text
+      }));
+    } catch {
+      setError("No fue posible leer el archivo. Intenta nuevamente.");
+    }
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
@@ -101,6 +160,16 @@ export function NewProjectForm() {
       }
     ]);
 
+    const baseMaterialContent = form.baseMaterialContent.trim();
+    const baseMaterial =
+      baseMaterialContent.length > 0
+        ? {
+            filename: form.baseMaterialFilename || "material-base.txt",
+            mimeType: form.baseMaterialMimeType || "text/plain",
+            content: form.baseMaterialContent
+          }
+        : undefined;
+
     const payload = {
       requestType: "new",
       project: {
@@ -114,6 +183,7 @@ export function NewProjectForm() {
         availableResources: form.availableResources,
         pedagogicalApproach: form.pedagogicalApproach,
         evaluationApproach: form.evaluationApproach,
+        baseMaterial,
         language: form.language,
         tone: form.tone
       },
@@ -409,6 +479,70 @@ export function NewProjectForm() {
             placeholder="Al finalizar, el participante podrá..."
             required
           />
+        </div>
+
+        <div>
+          <label className="label">Archivo base (opcional)</label>
+          <div className="mt-1 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <label
+                htmlFor="base-material-file"
+                className="cursor-pointer rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-100"
+              >
+                Seleccionar archivo
+              </label>
+              <input
+                id="base-material-file"
+                type="file"
+                accept=".txt,.md,.markdown,.json,text/plain,text/markdown,application/json"
+                className="hidden"
+                onChange={onBaseFileSelected}
+              />
+              {form.baseMaterialContent ? (
+                <button
+                  type="button"
+                  onClick={clearBaseMaterial}
+                  className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+                >
+                  Quitar
+                </button>
+              ) : null}
+            </div>
+
+            <p className="mt-2 text-xs text-slate-600">
+              Formatos soportados: <span className="font-mono">.txt</span>, <span className="font-mono">.md</span>,{" "}
+              <span className="font-mono">.json</span>. Máximo {Math.round(BASE_MATERIAL_MAX_BYTES / 1000)} KB y{" "}
+              {BASE_MATERIAL_MAX_CHARS.toLocaleString("es-ES")} caracteres.
+            </p>
+
+            {form.baseMaterialFilename ? (
+              <p className="mt-2 text-xs text-slate-700">
+                Archivo cargado: <span className="font-mono">{form.baseMaterialFilename}</span>
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        <div>
+          <label className="label">Contenido del material base (editable)</label>
+          <textarea
+            className="field min-h-[140px]"
+            value={form.baseMaterialContent}
+            onChange={(event) => {
+              const next = event.target.value.slice(0, BASE_MATERIAL_MAX_CHARS);
+              setForm((prev) => ({
+                ...prev,
+                baseMaterialFilename: prev.baseMaterialFilename || "material-base.txt",
+                baseMaterialMimeType: prev.baseMaterialMimeType || "text/plain",
+                baseMaterialContent: next
+              }));
+            }}
+            placeholder="Pega aquí un temario, lineamientos, contenido previo o un brief existente. Se usará como contexto para la IA."
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            {form.baseMaterialContent.length.toLocaleString("es-ES")} /{" "}
+            {BASE_MATERIAL_MAX_CHARS.toLocaleString("es-ES")} caracteres
+          </p>
         </div>
         <div>
           <label className="label">Restricciones</label>

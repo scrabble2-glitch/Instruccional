@@ -28,6 +28,10 @@ function modeLabel(mode: string): string {
 export function buildUserPrompt(request: GenerateRequest, previousJson?: unknown): string {
   if (request.requestType === "new") {
     const { project, options } = request;
+    const baseMaterial =
+      project.baseMaterial && project.baseMaterial.content
+        ? `\n\nMaterial base provisto por el usuario (usar como insumo, no copiar literal si no aplica):\n- Archivo: ${project.baseMaterial.filename}\n- Tipo: ${project.baseMaterial.mimeType}\n- Contenido:\n<<<\n${project.baseMaterial.content}\n>>>\n\nRegla adicional:\n- Si el material base entra en conflicto con el brief, prioriza el brief y registra el conflicto en production_notes.risks.\n`
+        : "";
 
     return `Genera un diseño instruccional con estas entradas:
 - Tipo de plantilla: ${templateLabel(options.template)}
@@ -44,6 +48,7 @@ export function buildUserPrompt(request: GenerateRequest, previousJson?: unknown
 - Enfoque de evaluación: ${project.evaluationApproach ?? "No especificado"}
 - Idioma: ${project.language}
 - Tono: ${project.tone}
+${baseMaterial}
 
 Instrucciones de guardrail:
 - Si falta información crítica, formula preguntas concretas en production_notes.risks.
