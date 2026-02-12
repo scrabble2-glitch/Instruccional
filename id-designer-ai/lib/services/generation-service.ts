@@ -183,6 +183,11 @@ function buildCacheKey(request: GenerateRequest, context: BuildContextResult, mo
 
 async function ensureProjectForRequest(request: GenerateRequest, model: string): Promise<{ id: string; durationHours: number }> {
   if (request.requestType === "new") {
+    const fallbackObjectives =
+      request.project.generalObjectives?.trim().length
+        ? request.project.generalObjectives
+        : `Guion técnico instruccional para el recurso ${request.project.resourceNumber}: ${request.project.resourceName}.`;
+
     const project = await prisma.project.create({
       data: {
         name: request.project.name,
@@ -190,7 +195,7 @@ async function ensureProjectForRequest(request: GenerateRequest, model: string):
         level: request.project.level,
         durationHours: Math.round(request.project.durationHours),
         modality: request.project.modality,
-        generalObjectives: request.project.generalObjectives,
+        generalObjectives: fallbackObjectives,
         restrictions: request.project.restrictions,
         availableResources: request.project.availableResources,
         pedagogicalApproach: request.project.pedagogicalApproach,

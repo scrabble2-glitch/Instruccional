@@ -85,6 +85,8 @@ describe("Versionado en DB", () => {
       requestType: "new" as const,
       project: {
         name: "Proyecto de prueba",
+        resourceNumber: "R01",
+        resourceName: "Introducción",
         audience: "Equipo QA",
         level: "Intermedio",
         durationHours: 6,

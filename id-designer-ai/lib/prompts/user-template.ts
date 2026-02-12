@@ -19,7 +19,7 @@ function modeLabel(mode: string): string {
     case "evaluation-only":
       return "Generar solo plan de evaluación";
     case "ova-storyboard":
-      return "Generar storyboard de OVA";
+      return "Generar guion técnico instruccional (storyboard de OVA)";
     default:
       return "Diseño instruccional completo";
   }
@@ -36,12 +36,14 @@ export function buildUserPrompt(request: GenerateRequest, previousJson?: unknown
     return `Genera un diseño instruccional con estas entradas:
 - Tipo de plantilla: ${templateLabel(options.template)}
 - Modo: ${modeLabel(options.mode)}
-- Título: ${project.name}
+- Curso: ${project.name}
+- Recurso: ${project.resourceNumber} - ${project.resourceName}
+- Formato sugerido para project.title: "${project.name} — Recurso ${project.resourceNumber}: ${project.resourceName}"
 - Audiencia: ${project.audience}
 - Nivel: ${project.level}
 - Duración total en horas: ${project.durationHours}
 - Modalidad: ${project.modality}
-- Objetivos generales: ${project.generalObjectives}
+- Objetivos generales: ${project.generalObjectives || "No provistos (inferir desde el material base y el contexto del curso)"}
 - Restricciones: ${project.restrictions ?? "Sin restricciones declaradas"}
 - Recursos disponibles: ${project.availableResources ?? "No especificados"}
 - Enfoque pedagógico: ${project.pedagogicalApproach ?? "No especificado"}
@@ -54,6 +56,12 @@ Instrucciones de guardrail:
 - Si falta información crítica, formula preguntas concretas en production_notes.risks.
 - Evita alucinaciones: no cites fuentes específicas ni datos no verificables.
 - Para recursos externos, usa descripciones genéricas y placeholders.
+- Si el modo es "guion técnico instruccional", interpreta course_structure como una secuencia de escenas/pantallas del recurso y describe de forma accionable:
+  - Narración / audio
+  - Texto en pantalla
+  - Interacción (si aplica)
+  - Recursos multimedia sugeridos (placeholders)
+  - Duración estimada por escena
 
 Devuelve JSON estricto con este schema exacto:
 ${outputSchemaForPrompt}`;

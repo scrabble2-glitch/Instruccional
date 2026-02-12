@@ -31,11 +31,13 @@ const BaseMaterialSchema = z
 const ProjectBriefSchema = z
   .object({
     name: z.string().min(3).max(120),
-    audience: z.string().min(3).max(300),
-    level: z.string().min(2).max(100),
+    resourceNumber: z.string().min(1).max(50),
+    resourceName: z.string().min(2).max(200),
+    audience: z.string().min(3).max(300).default("No especificada"),
+    level: z.string().min(2).max(100).default("No especificado"),
     durationHours: z.coerce.number().positive().max(300),
-    modality: z.enum(["virtual", "presencial", "blended"]),
-    generalObjectives: z.string().min(10).max(4000),
+    modality: z.enum(["virtual", "presencial", "blended"]).default("virtual"),
+    generalObjectives: z.string().max(4000).default(""),
     restrictions: z.string().max(4000).optional(),
     availableResources: z.string().max(4000).optional(),
     pedagogicalApproach: z.string().max(1200).optional(),

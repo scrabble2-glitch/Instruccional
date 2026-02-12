@@ -16,46 +16,22 @@ type LiveProgressEvent = {
 
 interface FormState {
   name: string;
-  audience: string;
-  level: string;
+  resourceNumber: string;
+  resourceName: string;
   durationHours: number;
-  modality: "virtual" | "presencial" | "blended";
-  generalObjectives: string;
-  restrictions: string;
-  availableResources: string;
-  pedagogicalApproach: string;
-  evaluationApproach: string;
   baseMaterialFilename: string;
   baseMaterialMimeType: string;
   baseMaterialContent: string;
-  language: string;
-  tone: string;
-  model: string;
-  safetyMode: "normal" | "estricto";
-  template: "general" | "curso-corporativo" | "curso-academico" | "microlearning";
-  mode: "full" | "evaluation-only" | "ova-storyboard";
 }
 
 const DEFAULT_FORM: FormState = {
   name: "",
-  audience: "",
-  level: "",
+  resourceNumber: "",
+  resourceName: "",
   durationHours: 8,
-  modality: "virtual",
-  generalObjectives: "",
-  restrictions: "",
-  availableResources: "",
-  pedagogicalApproach: "",
-  evaluationApproach: "",
   baseMaterialFilename: "",
   baseMaterialMimeType: "",
   baseMaterialContent: "",
-  language: "español",
-  tone: "profesional",
-  model: "gemini-2.5-flash",
-  safetyMode: "normal",
-  template: "general",
-  mode: "full"
 };
 
 const BASE_MATERIAL_MAX_CHARS = 30_000;
@@ -97,7 +73,12 @@ export function NewProjectForm() {
   const router = useRouter();
 
   const disabled = useMemo(
-    () => loading || baseMaterialLoading || !form.name || !form.generalObjectives,
+    () =>
+      loading ||
+      baseMaterialLoading ||
+      !form.name.trim() ||
+      !form.resourceNumber.trim() ||
+      !form.resourceName.trim(),
     [baseMaterialLoading, form, loading]
   );
 
@@ -238,24 +219,13 @@ export function NewProjectForm() {
       requestType: "new",
       project: {
         name: form.name,
-        audience: form.audience,
-        level: form.level,
+        resourceNumber: form.resourceNumber,
+        resourceName: form.resourceName,
         durationHours: Number(form.durationHours),
-        modality: form.modality,
-        generalObjectives: form.generalObjectives,
-        restrictions: form.restrictions,
-        availableResources: form.availableResources,
-        pedagogicalApproach: form.pedagogicalApproach,
-        evaluationApproach: form.evaluationApproach,
-        baseMaterial,
-        language: form.language,
-        tone: form.tone
+        baseMaterial
       },
       options: {
-        model: form.model,
-        safetyMode: form.safetyMode,
-        template: form.template,
-        mode: form.mode
+        mode: "ova-storyboard"
       }
     };
 
@@ -348,7 +318,7 @@ export function NewProjectForm() {
             const message =
               typeof payload.error === "string"
                 ? payload.error
-                : "No fue posible generar el diseño instruccional en modo en vivo.";
+                : "No fue posible generar el guion técnico instruccional en modo en vivo.";
             setError(message);
             streamFailed = true;
             completed = true;
@@ -393,7 +363,7 @@ export function NewProjectForm() {
         setError("La conexión en vivo terminó antes de recibir el resultado final.");
       }
     } catch {
-      setError("Error de red al generar el diseño instruccional.");
+      setError("Error de red al generar el guion técnico instruccional.");
     } finally {
       setLoading(false);
     }
@@ -402,14 +372,15 @@ export function NewProjectForm() {
   return (
     <form onSubmit={onSubmit} className="space-y-6">
       <section className="panel">
-        <h2 className="text-lg font-semibold text-slate-900">Nuevo Proyecto Instruccional</h2>
+        <h2 className="text-lg font-semibold text-slate-900">Guion técnico instruccional</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Completa el brief. El sistema generará una propuesta alineada a ADDIE + alineación constructiva.
+          Ingresa los datos mínimos del curso y del recurso. El sistema generará un guion técnico (storyboard) alineado a
+          ADDIE + alineación constructiva.
         </p>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="label">Nombre del proyecto</label>
+          <div className="md:col-span-2">
+            <label className="label">Nombre del curso</label>
             <input
               className="field"
               value={form.name}
@@ -419,27 +390,27 @@ export function NewProjectForm() {
             />
           </div>
           <div>
-            <label className="label">Audiencia</label>
+            <label className="label">Número de recurso</label>
             <input
               className="field"
-              value={form.audience}
-              onChange={(event) => setForm((prev) => ({ ...prev, audience: event.target.value }))}
-              placeholder="Jefes de equipo con 1 a 3 años de experiencia"
+              value={form.resourceNumber}
+              onChange={(event) => setForm((prev) => ({ ...prev, resourceNumber: event.target.value }))}
+              placeholder="R01"
               required
             />
           </div>
           <div>
-            <label className="label">Nivel</label>
+            <label className="label">Nombre del recurso</label>
             <input
               className="field"
-              value={form.level}
-              onChange={(event) => setForm((prev) => ({ ...prev, level: event.target.value }))}
-              placeholder="Intermedio"
+              value={form.resourceName}
+              onChange={(event) => setForm((prev) => ({ ...prev, resourceName: event.target.value }))}
+              placeholder="Introducción y objetivos"
               required
             />
           </div>
           <div>
-            <label className="label">Duración total (horas)</label>
+            <label className="label">Duración (horas)</label>
             <input
               className="field"
               type="number"
@@ -450,103 +421,12 @@ export function NewProjectForm() {
               required
             />
           </div>
-          <div>
-            <label className="label">Modalidad</label>
-            <select
-              className="field"
-              value={form.modality}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, modality: event.target.value as FormState["modality"] }))
-              }
-            >
-              <option value="virtual">Virtual</option>
-              <option value="presencial">Presencial</option>
-              <option value="blended">Blended</option>
-            </select>
-          </div>
-          <div>
-            <label className="label">Idioma</label>
-            <input
-              className="field"
-              value={form.language}
-              onChange={(event) => setForm((prev) => ({ ...prev, language: event.target.value }))}
-            />
-          </div>
-          <div>
-            <label className="label">Tono</label>
-            <input
-              className="field"
-              value={form.tone}
-              onChange={(event) => setForm((prev) => ({ ...prev, tone: event.target.value }))}
-            />
-          </div>
-          <div>
-            <label className="label">Modelo Gemini</label>
-            <input
-              className="field"
-              value={form.model}
-              onChange={(event) => setForm((prev) => ({ ...prev, model: event.target.value }))}
-              placeholder="gemini-2.5-flash"
-              required
-            />
-          </div>
-          <div>
-            <label className="label">Modo de seguridad</label>
-            <select
-              className="field"
-              value={form.safetyMode}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, safetyMode: event.target.value as FormState["safetyMode"] }))
-              }
-            >
-              <option value="normal">Normal</option>
-              <option value="estricto">Estricto</option>
-            </select>
-          </div>
-          <div>
-            <label className="label">Plantilla</label>
-            <select
-              className="field"
-              value={form.template}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, template: event.target.value as FormState["template"] }))
-              }
-            >
-              <option value="general">General</option>
-              <option value="curso-corporativo">Curso corporativo</option>
-              <option value="curso-academico">Curso académico</option>
-              <option value="microlearning">Microlearning</option>
-            </select>
-          </div>
-          <div>
-            <label className="label">Modo de generación</label>
-            <select
-              className="field"
-              value={form.mode}
-              onChange={(event) => setForm((prev) => ({ ...prev, mode: event.target.value as FormState["mode"] }))}
-            >
-              <option value="full">Diseño completo</option>
-              <option value="evaluation-only">Solo plan de evaluación</option>
-              <option value="ova-storyboard">Storyboard de OVA</option>
-            </select>
-          </div>
         </div>
       </section>
 
       <section className="panel grid gap-4">
         <div>
-          <label className="label">Objetivos generales</label>
-          <textarea
-            className="field min-h-[120px]"
-            value={form.generalObjectives}
-            onChange={(event) => setForm((prev) => ({ ...prev, generalObjectives: event.target.value }))}
-            placeholder="Al finalizar, el participante podrá..."
-            required
-          />
-        </div>
-
-        <div>
-          <label className="label">Archivo base (opcional)</label>
+          <label className="label">Archivo base</label>
           <div className="mt-1 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
               <label
@@ -611,50 +491,12 @@ export function NewProjectForm() {
                 baseMaterialContent: next
               }));
             }}
-            placeholder="Pega aquí un temario, lineamientos, contenido previo o un brief existente. Se usará como contexto para la IA."
+            placeholder="Pega aquí contenido, un guion previo, temario o lineamientos del recurso. Se usará como contexto para la IA."
           />
           <p className="mt-1 text-xs text-slate-500">
             {form.baseMaterialContent.length.toLocaleString("es-ES")} /{" "}
             {BASE_MATERIAL_MAX_CHARS.toLocaleString("es-ES")} caracteres
           </p>
-        </div>
-        <div>
-          <label className="label">Restricciones</label>
-          <textarea
-            className="field min-h-[90px]"
-            value={form.restrictions}
-            onChange={(event) => setForm((prev) => ({ ...prev, restrictions: event.target.value }))}
-            placeholder="Tiempo limitado, conectividad baja, política institucional..."
-          />
-        </div>
-        <div>
-          <label className="label">Recursos disponibles</label>
-          <textarea
-            className="field min-h-[90px]"
-            value={form.availableResources}
-            onChange={(event) => setForm((prev) => ({ ...prev, availableResources: event.target.value }))}
-            placeholder="LMS Moodle, videoconferencia, repositorio documental..."
-          />
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="label">Enfoque pedagógico</label>
-            <textarea
-              className="field min-h-[90px]"
-              value={form.pedagogicalApproach}
-              onChange={(event) => setForm((prev) => ({ ...prev, pedagogicalApproach: event.target.value }))}
-              placeholder="Aprendizaje basado en problemas, flipped classroom..."
-            />
-          </div>
-          <div>
-            <label className="label">Enfoque de evaluación</label>
-            <textarea
-              className="field min-h-[90px]"
-              value={form.evaluationApproach}
-              onChange={(event) => setForm((prev) => ({ ...prev, evaluationApproach: event.target.value }))}
-              placeholder="Formativa + sumativa con rúbricas analíticas..."
-            />
-          </div>
         </div>
       </section>
 
@@ -666,7 +508,7 @@ export function NewProjectForm() {
           disabled={disabled}
           className="rounded-lg bg-accent px-4 py-2 font-medium text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-70"
         >
-          {loading ? "Generando diseño en vivo..." : "Generar Diseño"}
+          {loading ? "Generando guion en vivo..." : "Generar guion técnico instruccional"}
         </button>
       </div>
 

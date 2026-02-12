@@ -64,23 +64,20 @@ describe("POST /api/generate", () => {
         requestType: "new",
         project: {
           name: "Curso",
-          audience: "Docentes",
-          level: "Intermedio",
+          resourceNumber: "R01",
+          resourceName: "Introducción",
           durationHours: 10,
-          modality: "virtual",
-          generalObjectives: "Aplicar estrategias de enseñanza activa en aula virtual.",
-          restrictions: "",
-          availableResources: "LMS",
-          pedagogicalApproach: "ABP",
-          evaluationApproach: "Rúbricas",
-          language: "español",
-          tone: "profesional"
+          baseMaterial: {
+            filename: "base.txt",
+            mimeType: "text/plain",
+            content: "Contenido base de ejemplo."
+          }
         },
         options: {
           model: "gemini-2.5-flash",
           safetyMode: "normal",
           template: "general",
-          mode: "full"
+          mode: "ova-storyboard"
         }
       })
     });
