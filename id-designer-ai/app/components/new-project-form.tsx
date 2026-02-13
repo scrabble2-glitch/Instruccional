@@ -3,6 +3,7 @@
 import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BASE_MATERIAL_MAX_BYTES, BASE_MATERIAL_MAX_CHARS } from "@/lib/constants/base-material";
+import { extractDocxTextFromArrayBuffer, extractPptxTextFromArrayBuffer } from "@/lib/client/office-extract";
 
 type GenerateSuccess = {
   projectId: string;
@@ -36,6 +37,8 @@ const DEFAULT_FORM: FormState = {
   baseMaterialContent: "",
   baseMaterialStrategy: "analyze_storyboard",
 };
+
+const BASE_MATERIAL_MAX_CLIENT_OFFICE_BYTES = 80_000_000; // 80 MB (client-side extraction for docx/pptx)
 
 function toStageLabel(stage: string): string {
   const map: Record<string, string> = {
@@ -141,8 +144,11 @@ export function NewProjectForm() {
       return;
     }
 
-    if (file.size > BASE_MATERIAL_MAX_BYTES) {
-      setError(`Archivo demasiado grande. Máximo ${Math.round(BASE_MATERIAL_MAX_BYTES / 1000)} KB.`);
+    const officeExt = ext === "pptx" || ext === "docx";
+    const maxBytes = officeExt ? Math.max(BASE_MATERIAL_MAX_BYTES, BASE_MATERIAL_MAX_CLIENT_OFFICE_BYTES) : BASE_MATERIAL_MAX_BYTES;
+
+    if (file.size > maxBytes) {
+      setError(`Archivo demasiado grande. Máximo ${Math.round(maxBytes / 1000)} KB.`);
       return;
     }
 
@@ -165,6 +171,55 @@ export function NewProjectForm() {
           baseMaterialContent: text
         }));
         setBaseMaterialMeta({ kind: "text", truncated: false });
+        return;
+      }
+
+      // For Office files (PPTX/DOCX), extract client-side to avoid uploading large binaries.
+      if (ext === "pptx") {
+        const arrayBuffer = await file.arrayBuffer();
+        const extracted = await extractPptxTextFromArrayBuffer(arrayBuffer);
+        const normalized = extracted.trim();
+        if (!normalized.length) {
+          setError(
+            "No se detectó texto utilizable en el PPTX (puede contener solo imágenes). " +
+              "Intenta con otro documento o pega el contenido manualmente."
+          );
+          return;
+        }
+
+        const truncated = normalized.length > BASE_MATERIAL_MAX_CHARS;
+        setForm((prev) => ({
+          ...prev,
+          baseMaterialFilename: file.name,
+          baseMaterialMimeType:
+            file.type || "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          baseMaterialContent: truncated ? normalized.slice(0, BASE_MATERIAL_MAX_CHARS) : normalized
+        }));
+        setBaseMaterialMeta({ kind: "pptx", truncated });
+        return;
+      }
+
+      if (ext === "docx") {
+        const arrayBuffer = await file.arrayBuffer();
+        const extracted = await extractDocxTextFromArrayBuffer(arrayBuffer);
+        const normalized = extracted.trim();
+        if (!normalized.length) {
+          setError(
+            "No se detectó texto utilizable en el DOCX. " +
+              "Intenta con otro documento o pega el contenido manualmente."
+          );
+          return;
+        }
+
+        const truncated = normalized.length > BASE_MATERIAL_MAX_CHARS;
+        setForm((prev) => ({
+          ...prev,
+          baseMaterialFilename: file.name,
+          baseMaterialMimeType:
+            file.type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          baseMaterialContent: truncated ? normalized.slice(0, BASE_MATERIAL_MAX_CHARS) : normalized
+        }));
+        setBaseMaterialMeta({ kind: "docx", truncated });
         return;
       }
 
@@ -530,14 +585,15 @@ export function NewProjectForm() {
               ) : null}
             </div>
 
-            <p className="mt-2 text-xs text-slate-600">
-              Formatos soportados: <span className="font-mono">.txt</span>, <span className="font-mono">.md</span>,{" "}
-              <span className="font-mono">.json</span>, <span className="font-mono">.pdf</span>,{" "}
-              <span className="font-mono">.docx</span>, <span className="font-mono">.pptx</span>,{" "}
-              imágenes (<span className="font-mono">.png</span>, <span className="font-mono">.jpg</span>,{" "}
-              <span className="font-mono">.webp</span>). Máximo {Math.round(BASE_MATERIAL_MAX_BYTES / 1000)} KB y{" "}
-              {BASE_MATERIAL_MAX_CHARS.toLocaleString("es-ES")} caracteres.
-            </p>
+	            <p className="mt-2 text-xs text-slate-600">
+	              Formatos soportados: <span className="font-mono">.txt</span>, <span className="font-mono">.md</span>,{" "}
+	              <span className="font-mono">.json</span>, <span className="font-mono">.pdf</span>,{" "}
+	              <span className="font-mono">.docx</span>, <span className="font-mono">.pptx</span>,{" "}
+	              imágenes (<span className="font-mono">.png</span>, <span className="font-mono">.jpg</span>,{" "}
+	              <span className="font-mono">.webp</span>). Máximo {Math.round(BASE_MATERIAL_MAX_BYTES / 1_000_000)} MB (PDF/imágenes) o{" "}
+	              {Math.round(BASE_MATERIAL_MAX_CLIENT_OFFICE_BYTES / 1_000_000)} MB (DOCX/PPTX) y{" "}
+	              {BASE_MATERIAL_MAX_CHARS.toLocaleString("es-ES")} caracteres.
+	            </p>
 
             {form.baseMaterialFilename ? (
               <p className="mt-2 text-xs text-slate-700">
