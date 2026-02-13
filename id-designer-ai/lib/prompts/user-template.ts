@@ -112,6 +112,29 @@ Schema:
 ${outputSchemaForPrompt}`;
 }
 
+export function buildStoryboardCompletionPrompt(previousJson: unknown, issues: string[]): string {
+  const issuesText = issues.length ? issues.map((issue) => `- ${issue}`).join("\n") : "- (Sin issues)";
+  return `Completa el siguiente JSON (ya válido) para que el storyboard de OVA quede listo para producción.
+
+Objetivo:
+- Asegurar que cada pantalla incluya guion de audio y notas de construcción, según el estándar descrito.
+- No cambies el contenido pedagógico existente salvo lo estrictamente necesario para completar los campos faltantes.
+
+Reglas:
+1) Devuelve solo JSON válido, sin texto adicional.
+2) Mantén exactamente el mismo schema.
+3) Para cada item en course_structure, asegúrate de incluir 2 recursos especiales:
+   - { type: "guion_audio", title: "<guion completo de narración para esa pantalla>", link_optional: "" }
+   - { type: "notas_construccion", title: "<instrucciones de construcción + textos emergentes si aplica>", link_optional: "" }
+4) No inventes links reales.
+
+Issues detectados:
+${issuesText}
+
+JSON a completar:
+${JSON.stringify(previousJson, null, 2)}`;
+}
+
 export function buildRepairPrompt(rawResponse: string, errorsSummary: string): string {
   return `Corrige el siguiente contenido para que sea JSON válido y cumpla exactamente el schema solicitado.
 No agregues explicaciones.

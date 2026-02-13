@@ -48,6 +48,7 @@ function toStageLabel(stage: string): string {
     cache_miss: "Sin caché",
     model_request: "Generación IA",
     model_repair: "Reparación JSON",
+    storyboard_enrich: "Compleción storyboard",
     pptx_export: "Exportación PPTX",
     quality_check: "Chequeo de calidad",
     persisting: "Persistencia",

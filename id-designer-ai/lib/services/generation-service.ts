@@ -1,7 +1,7 @@
 import { getValidCacheEntry, upsertCacheEntry } from "@/lib/cache/response-cache";
 import { env, SafetyMode } from "@/lib/env";
 import { callGeminiGenerateContent } from "@/lib/gemini/client";
-import { buildRepairPrompt, buildUserPrompt } from "@/lib/prompts/user-template";
+import { buildRepairPrompt, buildStoryboardCompletionPrompt, buildUserPrompt } from "@/lib/prompts/user-template";
 import { SYSTEM_INSTRUCTION } from "@/lib/prompts/system-instruction";
 import { prisma } from "@/lib/prisma";
 import { ensureDatabaseReady } from "@/lib/services/db-init";
@@ -70,6 +70,34 @@ function parseAndValidateOutput(rawText: string):
   }
 
   return { ok: true, value: validated.data };
+}
+
+function normalizeKey(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+function storyboardCompletenessIssues(output: InstructionalDesignOutput): string[] {
+  const issues: string[] = [];
+
+  for (const unit of output.course_structure) {
+    const audio = unit.resources.find((resource) => normalizeKey(resource.type) === "guion_audio" && resource.title.trim().length >= 50);
+    const build = unit.resources.find(
+      (resource) => normalizeKey(resource.type) === "notas_construccion" && resource.title.trim().length >= 50
+    );
+
+    if (!audio) {
+      issues.push(`${unit.unit_id}: falta resource type "guion_audio" (guion completo de narración).`);
+    }
+    if (!build) {
+      issues.push(`${unit.unit_id}: falta resource type "notas_construccion" (instrucciones de construcción).`);
+    }
+  }
+
+  return issues;
 }
 
 async function generateStrictJson(params: {
@@ -322,6 +350,44 @@ export async function generateAndStoreVersion(
     response = generated.output;
     tokenInput = generated.tokenInput;
     tokenOutput = generated.tokenOutput;
+
+    if (request.options.mode === "ova-storyboard") {
+      const issues = storyboardCompletenessIssues(response);
+      if (issues.length) {
+        hooks?.onStage?.(
+          "storyboard_enrich",
+          "Completando guion de audio y notas de construcción para dejar el storyboard listo."
+        );
+
+        const completionPrompt = buildStoryboardCompletionPrompt(response, issues);
+        const completion = await callGeminiGenerateContent({
+          model,
+          safetyMode,
+          systemInstruction: SYSTEM_INSTRUCTION,
+          userPrompt: completionPrompt
+        });
+
+        const completionParsed = parseAndValidateOutput(completion.rawText);
+        if (completionParsed.ok) {
+          response = completionParsed.value;
+          tokenInput += completion.usage?.promptTokenCount ?? estimateTokensFromText(completionPrompt);
+          tokenOutput +=
+            completion.usage?.candidatesTokenCount ??
+            completion.usage?.totalTokenCount ??
+            estimateTokensFromText(completion.rawText);
+        } else {
+          console.error(
+            JSON.stringify({
+              level: "error",
+              event: "storyboard.completion.invalid",
+              message: completionParsed.error
+            })
+          );
+          // Best-effort: keep original output if completion fails validation.
+        }
+      }
+    }
+
     estimatedCostUsd = estimateCostUsd(tokenInput, tokenOutput);
 
     const expectedDurationHours =

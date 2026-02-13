@@ -59,6 +59,7 @@ function toStageLabel(stage: string): string {
     cache_miss: "Sin caché",
     model_request: "Generación IA",
     model_repair: "Reparación JSON",
+    storyboard_enrich: "Compleción storyboard",
     quality_check: "Chequeo de calidad",
     persisting: "Persistencia",
     completed: "Completado"
