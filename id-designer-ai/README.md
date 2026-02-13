@@ -19,7 +19,6 @@ Aplicación web profesional para generar diseño instruccional con IA (Gemini AP
 - Generación IA en JSON estricto con validación Zod
 - Repair pass automático (1 intento) si la IA responde JSON inválido
 - Extracción de texto server-side para archivos base (PDF/DOCX/PPTX) y análisis de imágenes vía Gemini (sin exponer API key)
-- Flujo “NotebookLM”: abre NotebookLM y copia un prompt guiado según estrategia (para que generes el guion con tus fuentes en NotebookLM)
 - Vista de resultados con:
   - mapa instruccional
   - outcomes por Bloom
@@ -30,7 +29,8 @@ Aplicación web profesional para generar diseño instruccional con IA (Gemini AP
 - Panel de calidad interno (alineación + coherencia + carga cognitiva)
 - Versionado persistente de cada generación (prompt, parámetros, respuesta, timestamp)
 - Edición guiada por instrucción para regenerar secciones específicas
-- Exportación JSON y Markdown
+- Exportación JSON, Markdown y PPTX (descarga)
+- Al finalizar la generación en streaming, se intenta descargar automáticamente el PPTX
 - Rate limiting por IP (default 20 req/min)
 - Caching por hash de brief+parámetros
 - Estimación de tokens/costo por request
@@ -222,14 +222,6 @@ Si configuras `R2_*`, en cada generación de un **nuevo curso** se asegura la ex
 
 Esto evita colisiones entre nombres similares y mantiene el almacenamiento organizado por curso.
 
-## NotebookLM (sin API)
-
-NotebookLM no expone una API pública para “ejecutar” generación desde esta app. Por eso, el modo NotebookLM funciona así:
-
-- La app prepara un prompt según tu estrategia (`mantener todo` vs `analizar y proponer storyboard`)
-- Al presionar el botón, intenta copiar el prompt al portapapeles y abre NotebookLM en una pestaña nueva
-- En NotebookLM: crea el notebook, sube el archivo base como fuente y pega el prompt para generar el guion
-
 ## Carpetas locales por curso (opcional)
 
 Si configuras `LOCAL_COURSE_ROOT_DIR`, en cada generación de un **nuevo curso** la app crea/asegura una carpeta local con el nombre del curso (sanitizado).
@@ -246,6 +238,7 @@ Incluye pruebas mínimas:
 - `tests/generate-endpoint.test.ts`: endpoint `/api/generate` con mocks
 - `tests/generate-stream-endpoint.test.ts`: endpoint `/api/generate/stream` con mocks
 - `tests/versioning-db.test.ts`: versionado en DB (incremento secuencial)
+- `tests/pptx-export.test.ts`: generación de PPTX (firma ZIP)
 
 ## Documentación adicional
 
@@ -265,7 +258,7 @@ Incluye pruebas mínimas:
 - [x] Rate limit por IP y anti-abuso básico
 - [x] Caching por brief+parámetros
 - [x] Estimación de tokens y costo por request
-- [x] Exportación JSON + Markdown
+- [x] Exportación JSON + Markdown + PPTX
 - [x] Edición guiada para regeneración parcial
 - [x] Streaming SSE para ver progreso en vivo
 - [x] Pruebas mínimas incluidas

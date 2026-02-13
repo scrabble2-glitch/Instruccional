@@ -296,6 +296,12 @@ export function ProjectResultView(props: ProjectResultViewProps) {
                 >
                   Exportar Markdown
                 </a>
+                <a
+                  href={`/api/versions/${selected.id}/export?format=pptx`}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition hover:bg-slate-50"
+                >
+                  Exportar PPTX
+                </a>
               </div>
             </div>
 

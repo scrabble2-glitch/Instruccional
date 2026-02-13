@@ -2,7 +2,6 @@
 
 import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { buildNotebookLmPrompt } from "@/lib/notebooklm/prompt";
 
 type GenerateSuccess = {
   projectId: string;
@@ -25,8 +24,6 @@ interface FormState {
   baseMaterialContent: string;
   baseMaterialStrategy: "keep_all" | "analyze_storyboard";
 }
-
-type GenerationEngine = "app" | "notebooklm";
 
 const DEFAULT_FORM: FormState = {
   name: "",
@@ -53,6 +50,7 @@ function toStageLabel(stage: string): string {
     cache_miss: "Sin caché",
     model_request: "Generación IA",
     model_repair: "Reparación JSON",
+    pptx_export: "Exportación PPTX",
     quality_check: "Chequeo de calidad",
     persisting: "Persistencia",
     completed: "Completado"
@@ -63,11 +61,9 @@ function toStageLabel(stage: string): string {
 
 export function NewProjectForm() {
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
-  const [engine, setEngine] = useState<GenerationEngine>("notebooklm");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [baseMaterialLoading, setBaseMaterialLoading] = useState(false);
-  const [baseFile, setBaseFile] = useState<File | null>(null);
   const [baseMaterialMeta, setBaseMaterialMeta] = useState<{ kind: string; truncated: boolean } | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [liveProgress, setLiveProgress] = useState<LiveProgressEvent[]>([]);
@@ -88,29 +84,26 @@ export function NewProjectForm() {
       : form.baseMaterialContent.length >= BASE_MATERIAL_MAX_CHARS
     : false;
 
-  const hasSomeBaseMaterial = Boolean(baseFile || baseMaterialText.length > 0);
-
   const disabled = useMemo(
     () =>
       loading ||
       baseMaterialLoading ||
-      !hasSomeBaseMaterial ||
-      (engine === "app" ? keepAllWouldOmit : false) ||
+      !baseMaterialText ||
+      keepAllWouldOmit ||
       !form.name.trim() ||
       !form.resourceNumber.trim() ||
       !form.resourceName.trim(),
-    [baseMaterialLoading, engine, form, hasSomeBaseMaterial, keepAllWouldOmit, loading]
+    [baseMaterialLoading, baseMaterialText, form, keepAllWouldOmit, loading]
   );
 
   function clearBaseMaterial() {
     setForm((prev) => ({
       ...prev,
       baseMaterialFilename: "",
-        baseMaterialMimeType: "",
-        baseMaterialContent: ""
+      baseMaterialMimeType: "",
+      baseMaterialContent: ""
     }));
     setBaseMaterialMeta(null);
-    setBaseFile(null);
   }
 
   async function onBaseFileSelected(event: ChangeEvent<HTMLInputElement>) {
@@ -121,8 +114,6 @@ export function NewProjectForm() {
     if (!file) {
       return;
     }
-
-    setBaseFile(file);
 
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
     const allowedTextExtensions = new Set(["txt", "md", "markdown", "json", "csv", "rtf", "html", "htm"]);
@@ -215,81 +206,35 @@ export function NewProjectForm() {
     }
   }
 
-  function buildNotebookPrompt(): string {
-    return buildNotebookLmPrompt({
-      courseName: form.name,
-      resourceNumber: form.resourceNumber,
-      resourceName: form.resourceName,
-      durationHours: Number(form.durationHours),
-      strategy: form.baseMaterialStrategy
-    });
-  }
-
-  async function ensureCourseFolderBestEffort(courseName: string) {
+  async function downloadPptx(versionId: string): Promise<boolean> {
     try {
-      await fetch("/api/course/folder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ courseName })
-      });
+      const response = await fetch(`/api/versions/${versionId}/export?format=pptx`, { method: "GET" });
+      if (!response.ok) {
+        return false;
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition") ?? "";
+      const match = /filename=\"?([^\";]+)\"?/i.exec(disposition);
+      const filename = match?.[1] ?? `guion-${versionId}.pptx`;
+
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      return true;
     } catch {
-      // Best-effort: do not block NotebookLM handoff.
+      return false;
     }
   }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
-
-    if (engine === "notebooklm") {
-      const courseName = form.name.trim();
-      if (!courseName || !form.resourceNumber.trim() || !form.resourceName.trim()) {
-        setError("Completa Nombre del curso, Número de recurso y Nombre del recurso.");
-        return;
-      }
-
-      if (!hasSomeBaseMaterial) {
-        setError("Selecciona un archivo base o pega contenido para usar como fuente en NotebookLM.");
-        return;
-      }
-
-      const prompt = buildNotebookPrompt();
-
-      // Open first to avoid popup blockers (must happen on direct user gesture).
-      const notebookWindow = window.open("https://notebooklm.google.com/", "_blank", "noopener,noreferrer");
-      if (!notebookWindow) {
-        setError(
-          "El navegador bloqueó la apertura de NotebookLM. Habilita popups para localhost y vuelve a intentar. " +
-            "Mientras tanto, copia el prompt manualmente desde abajo."
-        );
-      }
-
-      void ensureCourseFolderBestEffort(courseName);
-
-      try {
-        await navigator.clipboard.writeText(prompt);
-      } catch {
-        // Clipboard might be blocked; fall back to displaying the prompt.
-        setError(
-          "No se pudo copiar el prompt al portapapeles (permiso del navegador). Copia el texto manualmente desde abajo."
-        );
-      }
-
-      setLiveProgress([
-        {
-          stage: "NotebookLM",
-          message:
-            "NotebookLM se abrió en una pestaña nueva. El prompt fue copiado (si el navegador lo permitió). " +
-            "En NotebookLM: crea un notebook, sube el archivo base como fuente y pega el prompt en el chat para generar el guion.",
-          createdAt: Date.now()
-        }
-      ]);
-
-      setLoading(false);
-      setRequestId(null);
-      setLiveSummary(null);
-      return;
-    }
 
     if (!baseMaterialText) {
       setError("Agrega un archivo base o pega el contenido antes de generar el guion.");
@@ -443,6 +388,7 @@ export function NewProjectForm() {
               tokenInput: number;
               tokenOutput: number;
               estimatedCostUsd: number;
+              versionId: string;
             };
 
             setLiveSummary({
@@ -457,10 +403,31 @@ export function NewProjectForm() {
               ...prev,
               {
                 stage: toStageLabel("completed"),
-                message: "Generación finalizada. Redirigiendo al resultado...",
+                message: "Generación finalizada. Preparando presentación PPTX...",
                 createdAt: Date.now()
               }
             ]);
+
+            setLiveProgress((prev) => [
+              ...prev,
+              {
+                stage: toStageLabel("pptx_export"),
+                message: "Generando PPTX para descarga automática...",
+                createdAt: Date.now()
+              }
+            ]);
+
+            const pptxOk = await downloadPptx(data.versionId);
+            if (!pptxOk) {
+              setLiveProgress((prev) => [
+                ...prev,
+                {
+                  stage: toStageLabel("pptx_export"),
+                  message: "No se pudo descargar el PPTX automáticamente. Podrás exportarlo desde el resultado.",
+                  createdAt: Date.now()
+                }
+              ]);
+            }
 
             router.push(`/projects/${data.projectId}?version=${data.versionId}`);
             router.refresh();
@@ -536,46 +503,6 @@ export function NewProjectForm() {
       </section>
 
       <section className="panel grid gap-4">
-        <div>
-          <label className="label">Motor de generación</label>
-          <div className="mt-1 grid gap-2 md:grid-cols-2">
-            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm">
-              <input
-                type="radio"
-                name="engine"
-                value="notebooklm"
-                checked={engine === "notebooklm"}
-                onChange={() => setEngine("notebooklm")}
-                className="mt-0.5"
-              />
-              <div>
-                <p className="font-medium text-slate-900">NotebookLM</p>
-                <p className="mt-1 text-xs text-slate-600">
-                  Abre NotebookLM y copia un prompt guiado según la estrategia. Requiere que el usuario suba el archivo
-                  base como fuente en NotebookLM.
-                </p>
-              </div>
-            </label>
-
-            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm">
-              <input
-                type="radio"
-                name="engine"
-                value="app"
-                checked={engine === "app"}
-                onChange={() => setEngine("app")}
-                className="mt-0.5"
-              />
-              <div>
-                <p className="font-medium text-slate-900">IA en la app</p>
-                <p className="mt-1 text-xs text-slate-600">
-                  Genera aquí con Gemini API en JSON estructurado, con streaming, validación y versionado.
-                </p>
-              </div>
-            </label>
-          </div>
-        </div>
-
         <div>
           <label className="label">Archivo base</label>
           <div className="mt-1 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3">
@@ -667,24 +594,13 @@ export function NewProjectForm() {
             </label>
           </div>
 
-          {engine === "app" && keepAllWouldOmit ? (
+          {keepAllWouldOmit ? (
             <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
               Aviso: el contenido actual parece estar truncado. Para la opción 1, divide el documento en partes más
               pequeñas o reduce el contenido.
             </p>
           ) : null}
         </div>
-
-        {engine === "notebooklm" ? (
-          <div className="rounded-lg border border-slate-200 bg-white p-3">
-            <p className="text-sm font-medium text-slate-900">Prompt para NotebookLM</p>
-            <p className="mt-1 text-xs text-slate-600">
-              Se copiará al portapapeles al presionar el botón. Si el navegador bloquea la copia, puedes copiarlo
-              manualmente.
-            </p>
-            <textarea className="field mt-3 min-h-[110px]" readOnly value={buildNotebookPrompt()} />
-          </div>
-        ) : null}
 
         <div>
           <label className="label">Contenido del material base (editable)</label>
@@ -718,11 +634,7 @@ export function NewProjectForm() {
           disabled={disabled}
           className="rounded-lg bg-accent px-4 py-2 font-medium text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-70"
         >
-          {engine === "notebooklm"
-            ? "Abrir NotebookLM y copiar prompt"
-            : loading
-              ? "Generando guion en vivo..."
-              : "Generar guion técnico instruccional"}
+          {loading ? "Generando guion en vivo..." : "Generar guion técnico instruccional"}
         </button>
       </div>
 
