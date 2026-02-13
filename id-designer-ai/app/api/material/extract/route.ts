@@ -98,6 +98,9 @@ export async function POST(request: Request): Promise<Response> {
     });
 
     const sanitized = sanitizeMultilineText(extracted.text);
+    if (sanitized.trim().length === 0) {
+      throw new Error("NO_TEXT_EXTRACTED");
+    }
     const truncated = sanitized.length > BASE_MATERIAL_MAX_CHARS;
     const content = truncated ? sanitized.slice(0, BASE_MATERIAL_MAX_CHARS) : sanitized;
 
@@ -121,6 +124,9 @@ export async function POST(request: Request): Promise<Response> {
     const rawMessage = error instanceof Error ? error.message : "Error desconocido";
     const publicMessage = rawMessage.includes("GEMINI_API_KEY")
       ? rawMessage
+      : rawMessage === "NO_TEXT_EXTRACTED"
+        ? "No se detectó texto utilizable en el archivo (puede ser un escaneo o contener solo imágenes). " +
+          "Intenta con otro documento, pega el contenido manualmente o convierte el recurso a texto."
       : rawMessage === "Formato no soportado."
         ? "Formato no soportado. Usa PDF, DOCX, PPTX, texto (.txt/.md/.json) o imágenes (PNG/JPG/WEBP)."
         : "No fue posible extraer texto del archivo. Intenta con otro documento o pega el contenido manualmente.";

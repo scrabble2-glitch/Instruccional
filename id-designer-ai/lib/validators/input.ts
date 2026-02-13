@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { env } from "@/lib/env";
+import { BASE_MATERIAL_MAX_CHARS } from "@/lib/constants/base-material";
 import { sanitizeOptionalMultilineText, sanitizeOptionalText, sanitizeText } from "@/lib/utils/sanitize";
 
 export const GenerationTemplateSchema = z.enum([
@@ -21,8 +22,6 @@ export const GenerationScopeSchema = z.enum([
 export const GenerationModeSchema = z.enum(["full", "evaluation-only", "ova-storyboard"]);
 
 export const BaseMaterialStrategySchema = z.enum(["keep_all", "analyze_storyboard"]);
-
-const BASE_MATERIAL_MAX_CHARS = 30_000;
 
 const BaseMaterialSchema = z
   .object({

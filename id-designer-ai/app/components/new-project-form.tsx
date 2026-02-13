@@ -2,6 +2,7 @@
 
 import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { BASE_MATERIAL_MAX_BYTES, BASE_MATERIAL_MAX_CHARS } from "@/lib/constants/base-material";
 
 type GenerateSuccess = {
   projectId: string;
@@ -35,9 +36,6 @@ const DEFAULT_FORM: FormState = {
   baseMaterialContent: "",
   baseMaterialStrategy: "analyze_storyboard",
 };
-
-const BASE_MATERIAL_MAX_CHARS = 30_000;
-const BASE_MATERIAL_MAX_BYTES = 2_000_000;
 
 function toStageLabel(stage: string): string {
   const map: Record<string, string> = {

@@ -1,8 +1,8 @@
 import { env, SafetyMode } from "@/lib/env";
 import { callGeminiExtractTextFromMedia } from "@/lib/gemini/client";
+import { BASE_MATERIAL_MAX_BYTES, BASE_MATERIAL_MAX_CHARS } from "@/lib/constants/base-material";
 
-export const BASE_MATERIAL_MAX_CHARS = 30_000;
-export const BASE_MATERIAL_MAX_BYTES = 2_000_000;
+export { BASE_MATERIAL_MAX_BYTES, BASE_MATERIAL_MAX_CHARS };
 
 export type SupportedBaseMaterialKind = "text" | "pdf" | "docx" | "pptx" | "image";
 
@@ -113,6 +113,34 @@ async function extractDocxText(buffer: Buffer): Promise<string> {
   return result.value ?? "";
 }
 
+async function extractDocxTextFromZip(buffer: Buffer): Promise<string> {
+  const mod = (await import("jszip")) as unknown as { default?: { loadAsync: (data: Buffer) => Promise<any> } };
+  const JSZip = mod.default ?? (mod as unknown as { loadAsync: (data: Buffer) => Promise<any> });
+  const zip = await JSZip.loadAsync(buffer);
+
+  const doc = zip.file("word/document.xml");
+  if (!doc) return "";
+  const xml = (await doc.async("text")) as string;
+
+  // Split by paragraph to preserve some structure.
+  const paragraphs = xml.split(/<\/w:p>/g);
+  const parts: string[] = [];
+
+  for (const paragraph of paragraphs) {
+    const matches = paragraph.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g);
+    const tokens: string[] = [];
+    for (const match of matches) {
+      const raw = match[1] ?? "";
+      const decoded = decodeXmlEntities(raw).trim();
+      if (decoded) tokens.push(decoded);
+    }
+    const line = tokens.join(" ").trim();
+    if (line) parts.push(line);
+  }
+
+  return parts.join("\n");
+}
+
 async function extractPptxText(buffer: Buffer): Promise<string> {
   const mod = (await import("jszip")) as unknown as { default?: { loadAsync: (data: Buffer) => Promise<any> } };
   const JSZip = mod.default ?? (mod as unknown as { loadAsync: (data: Buffer) => Promise<any> });
@@ -141,6 +169,29 @@ async function extractPptxText(buffer: Buffer): Promise<string> {
     }
   }
 
+  // Include speaker notes, when present (often holds key narration).
+  const notesNames = Object.keys(zip.files)
+    .filter((name) => name.startsWith("ppt/notesSlides/notesSlide") && name.endsWith(".xml"))
+    .sort((a, b) => {
+      const getIndex = (value: string) => {
+        const match = value.match(/notesSlide(\d+)\.xml$/);
+        return match ? Number(match[1]) : 0;
+      };
+      return getIndex(a) - getIndex(b);
+    });
+
+  for (const notesName of notesNames) {
+    const file = zip.file(notesName);
+    if (!file) continue;
+    const xml = (await file.async("text")) as string;
+    const matches = xml.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g);
+    for (const match of matches) {
+      const raw = match[1] ?? "";
+      const decoded = decodeXmlEntities(raw).trim();
+      if (decoded) parts.push(decoded);
+    }
+  }
+
   return parts.join("\n");
 }
 
@@ -159,6 +210,26 @@ async function extractImageText(buffer: Buffer, mimeType: string, safetyMode: Sa
   return result.rawText;
 }
 
+async function extractPdfTextViaGemini(params: {
+  buffer: Buffer;
+  mimeType: string;
+  safetyMode: SafetyMode;
+}): Promise<string> {
+  const data = params.buffer.toString("base64");
+  const result = await callGeminiExtractTextFromMedia({
+    model: env.GEMINI_MODEL,
+    safetyMode: params.safetyMode,
+    mimeType: params.mimeType,
+    dataBase64: data,
+    instruction:
+      "Extrae el texto del PDF respetando el orden de lectura. " +
+      "Si el PDF es un escaneo o contiene imágenes, realiza OCR. " +
+      "Devuelve solo texto plano, sin Markdown ni explicaciones. " +
+      "No inventes contenido si no es legible; si no se puede leer, indícalo."
+  });
+  return result.rawText;
+}
+
 export async function extractBaseMaterialText(params: {
   filename: string;
   mimeType: string;
@@ -173,9 +244,27 @@ export async function extractBaseMaterialText(params: {
 
   switch (kind) {
     case "pdf":
-      return { kind, text: await extractPdfText(params.buffer) };
+      try {
+        const text = await extractPdfText(params.buffer);
+        if (text.trim().length > 0) {
+          return { kind, text };
+        }
+      } catch {
+        // Fall back to Gemini extraction below.
+      }
+
+      // Fallback: handle scanned/secured PDFs via Gemini multimodal extraction.
+      return { kind, text: await extractPdfTextViaGemini({ buffer: params.buffer, mimeType: "application/pdf", safetyMode: params.safetyMode }) };
     case "docx":
-      return { kind, text: await extractDocxText(params.buffer) };
+      try {
+        const text = await extractDocxText(params.buffer);
+        if (text.trim().length > 0) {
+          return { kind, text };
+        }
+      } catch {
+        // Fall back to zip-based parsing below.
+      }
+      return { kind, text: await extractDocxTextFromZip(params.buffer) };
     case "pptx":
       return { kind, text: await extractPptxText(params.buffer) };
     case "image":
