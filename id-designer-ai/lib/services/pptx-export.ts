@@ -166,21 +166,17 @@ async function toNodeBuffer(pptx: PptxGenJS): Promise<Buffer> {
 
 type CourseUnit = InstructionalDesignOutput["course_structure"][number];
 
-function pickSpecialResource(unit: CourseUnit, patterns: RegExp[]): string | null {
-  for (const resource of unit.resources) {
-    const key = normalizeKey(resource.type || "");
-    if (patterns.some((pattern) => pattern.test(key))) {
-      const value = resource.title?.trim();
-      if (value) return value;
-    }
-  }
-  return null;
+function pickResourceByType(unit: CourseUnit, type: string): string | null {
+  const wanted = normalizeKey(type);
+  const found = unit.resources.find((resource) => normalizeKey(resource.type || "") === wanted);
+  const value = found?.title?.trim();
+  return value && value.length ? value : null;
 }
 
 function otherResources(unit: CourseUnit): CourseUnit["resources"] {
   return unit.resources.filter((resource) => {
     const key = normalizeKey(resource.type || "");
-    return !/(guion_audio|audio|narracion|locucion|notas_construccion|construccion|build)/.test(key);
+    return key !== "guion_audio" && key !== "notas_construccion";
   });
 }
 
@@ -327,8 +323,8 @@ async function toPptxBufferStoryboard(output: InstructionalDesignOutput): Promis
   addStoryboardMenu(pptx, output);
 
   for (const unit of output.course_structure) {
-    const audioScript = pickSpecialResource(unit, [/^guion_audio$/, /audio/, /narracion/, /locucion/]);
-    const build = pickSpecialResource(unit, [/^notas_construccion$/, /construccion/, /build/]);
+    const audioScript = pickResourceByType(unit, "guion_audio");
+    const build = pickResourceByType(unit, "notas_construccion");
     const resources = otherResources(unit).map(formatResource);
     const interactivity = buildInteractivityLines(unit);
 
