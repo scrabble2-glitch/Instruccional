@@ -74,12 +74,19 @@ Instrucciones de guardrail:
 - Si falta información crítica, formula preguntas concretas en production_notes.risks.
 - Evita alucinaciones: no cites fuentes específicas ni datos no verificables.
 - Para recursos externos, usa descripciones genéricas y placeholders.
-- Si el modo es "guion técnico instruccional", interpreta course_structure como una secuencia de escenas/pantallas del recurso y describe de forma accionable:
-  - Narración / audio
-  - Texto en pantalla
-  - Interacción (si aplica)
-  - Recursos multimedia sugeridos (placeholders)
-  - Duración estimada por escena
+- Si el modo es "guion técnico instruccional (storyboard de OVA)":
+  - Interpreta course_structure como una secuencia de pantallas/escenas. Cada item representa 1 pantalla (o 1 pantalla por parte si es muy extensa).
+  - La presentación debe quedar lista para producción: texto en pantalla + interactividad + guion de audio + notas de construcción.
+  - Usa estos campos por pantalla:
+    - content_outline: SOLO texto visible para estudiantes (títulos, bullets, mensajes, copy). No incluyas aquí notas de construcción.
+    - learning_activities: describe la interactividad como instrucciones para estudiantes (qué hacer y qué ocurre: botones, check de navegación, pop-ups, drag and drop, preguntas, feedback).
+    - assessment: usa para checks de aprendizaje (preguntas, ejercicios evaluables) con evidencia y rúbrica simple.
+    - resources: incluye placeholders de recursos multimedia (iconos/imagenes/infografías/video). NO inventes links reales.
+      Además, agrega obligatoriamente 2 recursos especiales por pantalla (sin links reales):
+      1) { type: "guion_audio", title: "<guion completo de narración para esa pantalla>", link_optional: "" }
+      2) { type: "notas_construccion", title: "<instrucciones de construcción (capas, botones, estados, triggers, navegación) + textos emergentes si aplica>", link_optional: "" }
+  - El guion de audio debe ser natural, profesional y coherente con el texto en pantalla.
+  - En keep_all: no omitas contenido; distribúyelo en pantallas sin perder el orden general.
 ${strategyGuidance}
 
 Devuelve JSON estricto con este schema exacto:

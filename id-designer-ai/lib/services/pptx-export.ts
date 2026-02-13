@@ -1,6 +1,8 @@
 import PptxGenJS from "pptxgenjs";
 import type { InstructionalDesignOutput } from "@/lib/validators/output-schema";
 
+export type PptxExportMode = "full" | "evaluation-only" | "ova-storyboard";
+
 const COLOR = {
   accent: "0B7285",
   slate900: "0F172A",
@@ -34,6 +36,14 @@ function chunk<T>(items: T[], size: number): T[][] {
     out.push(items.slice(i, i + size));
   }
   return out.length ? out : [[]];
+}
+
+function normalizeKey(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
 }
 
 function toCourseSummary(output: InstructionalDesignOutput): string[] {
@@ -99,7 +109,7 @@ function addHeader(slide: PptxGenJS.Slide, title: string, subtitle?: string) {
 
 function addPanel(
   slide: PptxGenJS.Slide,
-  params: { title: string; body: string; x: number; y: number; w: number; h: number }
+  params: { title: string; body: string; x: number; y: number; w: number; h: number; bullet?: boolean }
 ) {
   slide.addShape("roundRect", {
     x: params.x,
@@ -130,7 +140,7 @@ function addPanel(
     fontSize: 11,
     color: COLOR.slate700,
     valign: "top",
-    bullet: true
+    bullet: params.bullet ?? true
   });
 }
 
@@ -154,7 +164,225 @@ async function toNodeBuffer(pptx: PptxGenJS): Promise<Buffer> {
   throw new Error("No fue posible generar el PPTX en formato binario.");
 }
 
-export async function toPptxBuffer(output: InstructionalDesignOutput): Promise<Buffer> {
+type CourseUnit = InstructionalDesignOutput["course_structure"][number];
+
+function pickSpecialResource(unit: CourseUnit, patterns: RegExp[]): string | null {
+  for (const resource of unit.resources) {
+    const key = normalizeKey(resource.type || "");
+    if (patterns.some((pattern) => pattern.test(key))) {
+      const value = resource.title?.trim();
+      if (value) return value;
+    }
+  }
+  return null;
+}
+
+function otherResources(unit: CourseUnit): CourseUnit["resources"] {
+  return unit.resources.filter((resource) => {
+    const key = normalizeKey(resource.type || "");
+    return !/(guion_audio|audio|narracion|locucion|notas_construccion|construccion|build)/.test(key);
+  });
+}
+
+function buildNotes(params: {
+  courseTitle: string;
+  unit: CourseUnit;
+  audioScript: string | null;
+  buildNotes: string | null;
+  extraResources: string[];
+}): string {
+  const lines: string[] = [];
+
+  lines.push(`Curso: ${safeLine(params.courseTitle)}`);
+  lines.push(`Pantalla: ${safeLine(`${params.unit.unit_id} - ${params.unit.title}`)}`);
+  lines.push(`Duración estimada: ${params.unit.duration_minutes} min`);
+  lines.push("");
+
+  lines.push("GUION DE AUDIO:");
+  lines.push(params.audioScript?.trim() ? params.audioScript.trim() : "(No provisto por IA. Regenera para completar.)");
+  lines.push("");
+
+  lines.push("NOTAS DE CONSTRUCCION:");
+  lines.push(params.buildNotes?.trim() ? params.buildNotes.trim() : "(No provistas por IA. Regenera para completar.)");
+  lines.push("");
+
+  if (params.extraResources.length) {
+    lines.push("RECURSOS / ASSETS (placeholders):");
+    for (const resource of params.extraResources) {
+      lines.push(`- ${resource}`);
+    }
+    lines.push("");
+  }
+
+  return lines.join("\n");
+}
+
+function buildInteractivityLines(unit: CourseUnit): string[] {
+  const lines: string[] = [];
+
+  for (const activity of unit.learning_activities) {
+    const label = `${activity.type}: ${activity.description}`;
+    lines.push(safeLine(label));
+  }
+
+  for (const assessment of unit.assessment) {
+    const label = `Check (${assessment.type}): ${assessment.description} | Evidencia: ${assessment.evidence}`;
+    lines.push(safeLine(label));
+  }
+
+  return lines.length ? lines : ["Sin interactividad declarada (agrega instrucciones para estudiantes)."];
+}
+
+function addStoryboardCover(pptx: PptxGenJS, output: InstructionalDesignOutput) {
+  const slide = pptx.addSlide();
+  addHeader(slide, output.project.title, "Guion técnico instruccional (Storyboard OVA)");
+
+  slide.addShape("roundRect", {
+    x: 4.9,
+    y: 3.2,
+    w: 3.6,
+    h: 0.9,
+    fill: { color: COLOR.white },
+    line: { color: COLOR.border, width: 1 }
+  });
+  slide.addText("Iniciar", {
+    x: 4.9,
+    y: 3.28,
+    w: 3.6,
+    h: 0.9,
+    align: "center",
+    valign: "middle",
+    fontFace: "Calibri",
+    fontSize: 20,
+    bold: true,
+    color: COLOR.accent
+  });
+
+  slide.addText(
+    "Este PPTX es un guion técnico para producción. El texto visible corresponde al estudiante; el audio y notas de construcción van en Notas del orador.",
+    {
+      x: 0.9,
+      y: 5.9,
+      w: 11.6,
+      h: 1.0,
+      fontFace: "Calibri",
+      fontSize: 12,
+      color: COLOR.slate700
+    }
+  );
+
+  slide.addNotes(
+    [
+      `Curso: ${safeLine(output.project.title)}`,
+      "",
+      "NOTAS DE CONSTRUCCION:",
+      "- Botón 'Iniciar': navegar a la pantalla de Contenido/Menú.",
+      "- Mantener estilo y navegación consistente en todas las pantallas (Menú/Atrás).",
+      "",
+      "GUION DE AUDIO:",
+      "Bienvenido/a. En este recurso recorrerás el contenido de forma guiada. Usa el menú para avanzar por las secciones y realiza las actividades para consolidar tu aprendizaje."
+    ].join("\n")
+  );
+}
+
+function addStoryboardMenu(pptx: PptxGenJS, output: InstructionalDesignOutput) {
+  const slide = pptx.addSlide();
+  addHeader(slide, "Contenido", "Haz clic en cada botón para acceder a la información");
+
+  const items = output.course_structure.map((unit) => `${unit.unit_id}. ${unit.title}`);
+  addPanel(slide, {
+    title: "Pantallas",
+    body: bulletLines(items, 18),
+    x: 0.9,
+    y: 1.4,
+    w: 11.55,
+    h: 5.6,
+    bullet: true
+  });
+
+  slide.addNotes(
+    [
+      `Curso: ${safeLine(output.project.title)}`,
+      "",
+      "NOTAS DE CONSTRUCCION:",
+      "- Construir un menú con botones a cada pantalla (unit_id).",
+      "- Agregar botón 'Anterior' y botón 'Menú' persistentes.",
+      "- Al visitar una pantalla, marcar el botón correspondiente con un check/estado para orientar la navegación.",
+      "",
+      "GUION DE AUDIO:",
+      "Selecciona una sección del menú para iniciar. Puedes regresar al menú en cualquier momento para retomar otra pantalla."
+    ].join("\n")
+  );
+}
+
+async function toPptxBufferStoryboard(output: InstructionalDesignOutput): Promise<Buffer> {
+  const pptx = new PptxGenJS();
+  pptx.layout = "LAYOUT_WIDE";
+  pptx.author = "Instructional Design Designer AI";
+  pptx.company = "id-designer-ai";
+  pptx.subject = "Guion técnico instruccional (Storyboard OVA)";
+  pptx.title = safeLine(output.project.title);
+
+  addStoryboardCover(pptx, output);
+  addStoryboardMenu(pptx, output);
+
+  for (const unit of output.course_structure) {
+    const audioScript = pickSpecialResource(unit, [/^guion_audio$/, /audio/, /narracion/, /locucion/]);
+    const build = pickSpecialResource(unit, [/^notas_construccion$/, /construccion/, /build/]);
+    const resources = otherResources(unit).map(formatResource);
+    const interactivity = buildInteractivityLines(unit);
+
+    const contentChunks = chunk(unit.content_outline, 14);
+    for (let idx = 0; idx < contentChunks.length; idx += 1) {
+      const slide = pptx.addSlide();
+      const partLabel = contentChunks.length > 1 ? ` (parte ${idx + 1}/${contentChunks.length})` : "";
+      addHeader(slide, `${unit.unit_id} — ${unit.title}${partLabel}`, `Duración: ${unit.duration_minutes} min`);
+
+      addPanel(slide, {
+        title: "Texto en pantalla (estudiante)",
+        body: bulletLines(contentChunks[idx]),
+        x: 0.9,
+        y: 1.25,
+        w: 7.55,
+        h: 5.85,
+        bullet: false
+      });
+
+      addPanel(slide, {
+        title: "Interactividad (estudiante)",
+        body: bulletLines(interactivity, 10),
+        x: 8.65,
+        y: 1.25,
+        w: 3.8,
+        h: 2.55,
+        bullet: true
+      });
+
+      addPanel(slide, {
+        title: "Recursos (placeholders)",
+        body: bulletLines(resources, 8),
+        x: 8.65,
+        y: 3.9,
+        w: 3.8,
+        h: 3.2,
+        bullet: true
+      });
+
+      const notes = buildNotes({
+        courseTitle: output.project.title,
+        unit,
+        audioScript,
+        buildNotes: build,
+        extraResources: resources
+      });
+      slide.addNotes(notes);
+    }
+  }
+
+  return toNodeBuffer(pptx);
+}
+
+async function toPptxBufferOverview(output: InstructionalDesignOutput): Promise<Buffer> {
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
   pptx.author = "Instructional Design Designer AI";
@@ -328,3 +556,13 @@ export async function toPptxBuffer(output: InstructionalDesignOutput): Promise<B
   return toNodeBuffer(pptx);
 }
 
+export async function toPptxBuffer(
+  output: InstructionalDesignOutput,
+  options?: { mode?: string }
+): Promise<Buffer> {
+  const mode = (options?.mode ?? "full") as string;
+  if (mode === "ova-storyboard") {
+    return toPptxBufferStoryboard(output);
+  }
+  return toPptxBufferOverview(output);
+}

@@ -6,7 +6,7 @@ describe("pptx-export", () => {
   it(
     "genera un PPTX (ZIP) válido",
     async () => {
-      const buffer = await toPptxBuffer(sampleOutput);
+      const buffer = await toPptxBuffer(sampleOutput, { mode: "ova-storyboard" });
 
       expect(buffer.byteLength).toBeGreaterThan(1000);
       // PPTX es un ZIP: firma 'PK'
@@ -16,4 +16,3 @@ describe("pptx-export", () => {
     30_000
   );
 });
-

@@ -48,6 +48,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
     select: {
       id: true,
       versionNumber: true,
+      generationParams: true,
       responseJson: true,
       project: {
         select: {
@@ -64,6 +65,10 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
   const output = InstructionalDesignOutputSchema.parse(
     parseStoredJson<unknown>(version.responseJson, `Version ${version.id} responseJson`)
   );
+  const generationParams = parseStoredJson<{ mode?: string }>(
+    version.generationParams,
+    `Version ${version.id} generationParams`
+  );
   const baseName = safeExportBaseName(version.project.name, version.versionNumber);
 
   if (format === "md") {
@@ -78,7 +83,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
   }
 
   if (format === "pptx") {
-    const buffer = await toPptxBuffer(output);
+    const buffer = await toPptxBuffer(output, { mode: generationParams.mode });
 
     // Best-effort: store a copy in the local course folder, if configured.
     try {
