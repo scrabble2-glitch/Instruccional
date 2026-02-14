@@ -91,6 +91,9 @@ function storyboardCompletenessIssues(output: InstructionalDesignOutput): string
     const imageQuery = unit.resources.find(
       (resource) => normalizeKey(resource.type) === "imagen_query" && resource.title.trim().length >= 8
     );
+    const visualSpec = unit.resources.find(
+      (resource) => normalizeKey(resource.type) === "visual_spec" && resource.title.trim().length >= 40
+    );
 
     if (!audio) {
       issues.push(`${unit.unit_id}: falta resource type "guion_audio" (guion completo de narración).`);
@@ -100,6 +103,9 @@ function storyboardCompletenessIssues(output: InstructionalDesignOutput): string
     }
     if (!imageQuery) {
       issues.push(`${unit.unit_id}: falta resource type "imagen_query" (término de búsqueda para visual).`);
+    }
+    if (!visualSpec) {
+      issues.push(`${unit.unit_id}: falta resource type "visual_spec" (especificación visual para infografía/UI).`);
     }
   }
 

@@ -83,10 +83,25 @@ Instrucciones de guardrail:
     - learning_activities: describe la interactividad como instrucciones para estudiantes (qué hacer y qué ocurre: botones, check de navegación, pop-ups, drag and drop, preguntas, feedback).
     - assessment: usa para checks de aprendizaje (preguntas, ejercicios evaluables) con evidencia y rúbrica simple.
     - resources: incluye placeholders de recursos multimedia (iconos/imagenes/infografías/video). NO inventes links reales.
-      Además, agrega obligatoriamente 3 recursos especiales por pantalla (sin links reales):
+      Además, agrega obligatoriamente 4 recursos especiales por pantalla (sin links reales):
       1) { type: "guion_audio", title: "<guion completo de narración para esa pantalla>", link_optional: "" }
       2) { type: "notas_construccion", title: "<instrucciones de construcción (capas, botones, estados, triggers, navegación) + textos emergentes si aplica>", link_optional: "" }
       3) { type: "imagen_query", title: "<término de búsqueda para Freepik (3-8 palabras) + estilo visual sugerido (ej. 'ilustración plana', 'foto realista')>", link_optional: "" }
+      4) { type: "visual_spec", title: "<especificación visual de la infografía y componentes UI en formato texto>", link_optional: "" }
+
+      Formato requerido para "visual_spec" (texto, NO JSON), ejemplo:
+      layout: process_steps
+      items:
+      - Paso 1 | Título corto | Texto muy breve (<= 120 caracteres)
+      - Paso 2 | Título corto | Texto muy breve
+      - Paso 3 | Título corto | Texto muy breve
+      buttons: Menú, Siguiente, Ver ejemplo
+
+      Reglas "visual_spec":
+      - layout permitido: process_steps | cards | timeline | bullets
+      - items: 2 a 5 elementos (título y texto breve). Deben corresponder al contenido de la pantalla.
+      - buttons: 0 a 4 botones (labels) que se verán en pantalla (y se usarán como hotspots/pop-ups).
+      - No incluyas links.
   - El guion de audio debe ser natural, profesional y coherente con el texto en pantalla.
   - En keep_all: no omitas contenido; distribúyelo en pantallas sin perder el orden general.
 ${strategyGuidance}
@@ -130,7 +145,9 @@ Reglas:
    - { type: "notas_construccion", title: "<instrucciones de construcción + textos emergentes si aplica>", link_optional: "" }
 4) Además, incluye un recurso:
    - { type: "imagen_query", title: "<término de búsqueda para Freepik (3-8 palabras) + estilo visual>", link_optional: "" }
-5) No inventes links reales.
+5) Además, incluye un recurso:
+   - { type: "visual_spec", title: "<layout + items + buttons (formato texto; NO JSON)>", link_optional: "" }
+6) No inventes links reales.
 
 Issues detectados:
 ${issuesText}
