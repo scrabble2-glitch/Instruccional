@@ -56,9 +56,15 @@ export async function ensureCourseFolderLocal(courseName: string): Promise<
 
   await fs.mkdir(folderPath, { recursive: true });
 
+  // Standard subfolders used by the app (assets, exports, etc.).
+  // Keep minimal: create `assets/` upfront so users can find the path easily.
+  const assetsPath = path.join(folderPath, "assets");
+  await fs.mkdir(assetsPath, { recursive: true });
+
   // Marker file for tooling and to make empty folders visible in some contexts.
   try {
     await fs.writeFile(path.join(folderPath, ".keep"), "", { flag: "a" });
+    await fs.writeFile(path.join(assetsPath, ".keep"), "", { flag: "a" });
   } catch {
     // Best-effort: folder already exists or is writable.
   }
@@ -69,4 +75,3 @@ export async function ensureCourseFolderLocal(courseName: string): Promise<
     folderPath
   };
 }
-
