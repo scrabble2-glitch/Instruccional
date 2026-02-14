@@ -31,7 +31,7 @@ Aplicación web profesional para generar diseño instruccional con IA (Gemini AP
 - Edición guiada por instrucción para regenerar secciones específicas
 - Exportación JSON, Markdown y PPTX (descarga)
 - Al finalizar la generación en streaming, se intenta descargar automáticamente el PPTX
-- En exportación PPTX (Storyboard OVA): composición tipo Genially (tarjetas, jerarquía visual) e inclusión de imágenes reales via Freepik API (opcional)
+- En exportación PPTX (Storyboard OVA): composición tipo Genially (tarjetas, jerarquía visual), imágenes automáticas (Openverse) y prototipo de interactividad (botones/popups)
 - Rate limiting por IP (default 20 req/min)
 - Caching por hash de brief+parámetros
 - Estimación de tokens/costo por request
@@ -129,8 +129,6 @@ Referencia completa en `.env.example`.
 - `CACHE_TTL_MINUTES`: TTL del cache
 - `RATE_LIMIT_PER_MINUTE`: límite por IP
 - `INPUT_TOKEN_COST_PER_MILLION` / `OUTPUT_TOKEN_COST_PER_MILLION`: costos aproximados
-- `FREEPIK_API_KEY`: (opcional) API key de Freepik para incrustar imágenes reales en el PPTX (solo server)
-- `FREEPIK_API_BASE_URL`: (opcional) base URL de Freepik API (default `https://api.freepik.com`)
 - `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`: credenciales Cloudflare R2 (solo server)
 - `R2_BUCKET`: bucket de R2
 - `R2_PREFIX_BASE`: prefijo base para “carpetas” por curso (default `cursos/`)
@@ -225,18 +223,14 @@ Si configuras `R2_*`, en cada generación de un **nuevo curso** se asegura la ex
 
 Esto evita colisiones entre nombres similares y mantiene el almacenamiento organizado por curso.
 
-## Imágenes (sin API key) + Freepik (opcional)
+## Imágenes (automático, sin API key)
 
-En el exportador PPTX del modo **Storyboard OVA**:
+En el exportador PPTX del modo **Storyboard OVA** la app intenta:
 
-- Si **NO** configuras `FREEPIK_API_KEY`, la app intenta buscar imágenes en **Openverse** (sin API key) y coloca una marca de agua `PREVISUALIZACION` sobre el visual.
-- Si configuras `FREEPIK_API_KEY`, se prioriza Freepik (API oficial) y no se agrega marca de agua por defecto.
-
-En ambos casos se intenta:
-
-- Generar una imagen por pantalla (unidad) descargándola desde Openverse (sin API key) o Freepik (API oficial, si está configurada).
+- Buscar y descargar una imagen por pantalla desde **Openverse** (sin API key).
+- Incrustarla dentro del slide con marca de agua `PREVISUALIZACION`.
 - Guardar/cachar las imágenes en `LOCAL_COURSE_ROOT_DIR/<curso>/assets/` cuando esté configurado.
-- Registrar en las Notas del orador la atribución (título/fuente/licencia si está disponible).
+- Registrar en las Notas del orador la atribución/licencia cuando esté disponible.
 
 Si falla la descarga (red/permiso/imagen), se usa un placeholder visual (formas) para no dejar la diapositiva "solo texto".
 

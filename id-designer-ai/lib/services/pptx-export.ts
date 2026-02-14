@@ -1,6 +1,6 @@
 import PptxGenJS from "pptxgenjs";
 import type { InstructionalDesignOutput } from "@/lib/validators/output-schema";
-import { resolveFreepikVisual, type ResolvedVisual } from "@/lib/services/storyboard-visuals";
+import { resolveStoryboardVisual, type ResolvedVisual } from "@/lib/services/storyboard-visuals";
 
 export type PptxExportMode = "full" | "evaluation-only" | "ova-storyboard";
 
@@ -221,7 +221,7 @@ function buildNotes(params: {
   if (params.visualAttribution.length) {
     for (const line of params.visualAttribution) lines.push(safeLine(line));
   } else {
-    lines.push("(Sin imagen incrustada: revisa el término o configura FREEPIK_API_KEY si quieres priorizar Freepik.)");
+    lines.push("(Sin imagen incrustada: revisa el término de búsqueda y tu conexión a internet.)");
   }
   lines.push("");
 
@@ -309,10 +309,17 @@ interface StoryVisualItem {
   body: string;
 }
 
+interface StoryPopupSpec {
+  button: string;
+  title: string;
+  body: string;
+}
+
 interface StoryVisualSpec {
   layout: StoryVisualLayout;
   items: StoryVisualItem[];
   buttons: string[];
+  popups: StoryPopupSpec[];
 }
 
 function parseButtonsLine(value: string): string[] {
@@ -325,7 +332,7 @@ function parseButtonsLine(value: string): string[] {
 }
 
 function parseVisualSpec(raw: string | null, fallbackFrom: { title: string; content: string[] }): StoryVisualSpec {
-  const base: StoryVisualSpec = { layout: "bullets", items: [], buttons: [] };
+  const base: StoryVisualSpec = { layout: "bullets", items: [], buttons: [], popups: [] };
   if (!raw?.trim()) {
     // Basic fallback from content_outline
     const items = clampLines(fallbackFrom.content, 4, 90).map((line) => ({ title: line, body: "" }));
@@ -338,6 +345,7 @@ function parseVisualSpec(raw: string | null, fallbackFrom: { title: string; cont
     .filter((line) => line.length > 0);
 
   let inItems = false;
+  let inPopups = false;
   for (const line of lines) {
     const lower = line.toLowerCase();
 
@@ -352,6 +360,7 @@ function parseVisualSpec(raw: string | null, fallbackFrom: { title: string; cont
 
     if (lower.startsWith("items:") || lower.startsWith("items=") || lower.startsWith("elementos:")) {
       inItems = true;
+      inPopups = false;
       const inline = line.split(/[:=]/).slice(1).join(":").trim();
       if (inline) {
         // Allow inline "items=" separated by ";"
@@ -375,6 +384,13 @@ function parseVisualSpec(raw: string | null, fallbackFrom: { title: string; cont
       const value = line.split(/[:=]/).slice(1).join(":").trim();
       base.buttons = parseButtonsLine(value);
       inItems = false;
+      inPopups = false;
+      continue;
+    }
+
+    if (lower.startsWith("popups:") || lower.startsWith("popups=") || lower.startsWith("capas:") || lower.startsWith("layers:")) {
+      inItems = false;
+      inPopups = true;
       continue;
     }
 
@@ -393,8 +409,24 @@ function parseVisualSpec(raw: string | null, fallbackFrom: { title: string; cont
       continue;
     }
 
-    // Any other line ends the items section.
+    if (inPopups && (line.startsWith("-") || line.startsWith("•"))) {
+      const trimmed = line.replace(/^[-•]\s*/g, "").trim();
+      const parts = trimmed.split("|").map((p) => safeLine(p));
+      const cleaned = parts.map((p) => p.trim()).filter(Boolean);
+      if (!cleaned.length) continue;
+      if (cleaned.length >= 3) {
+        base.popups.push({ button: cleaned[0], title: cleaned[1], body: cleaned.slice(2).join(" | ") });
+      } else if (cleaned.length === 2) {
+        base.popups.push({ button: cleaned[0], title: cleaned[1], body: "" });
+      } else {
+        base.popups.push({ button: cleaned[0], title: cleaned[0], body: "" });
+      }
+      continue;
+    }
+
+    // Any other line ends the list sections.
     inItems = false;
+    inPopups = false;
   }
 
   if (!base.items.length) {
@@ -413,6 +445,24 @@ function parseVisualSpec(raw: string | null, fallbackFrom: { title: string; cont
       title: truncateText(item.title, 46),
       body: truncateText(item.body || "", 120)
     }));
+
+  base.popups = base.popups
+    .slice(0, 3)
+    .map((popup) => ({
+      button: truncateText(popup.button, 18),
+      title: truncateText(popup.title, 50),
+      body: truncateText(popup.body || "", 240)
+    }));
+
+  // If buttons exist but popups are missing, create minimal popups so the PPT prototype is functional.
+  if (base.buttons.length && base.popups.length === 0) {
+    const fallbackBody = base.items.map((item) => item.body || item.title).filter(Boolean);
+    base.popups = base.buttons.slice(0, 3).map((button, idx) => ({
+      button: truncateText(button, 18),
+      title: truncateText(button, 50),
+      body: truncateText(fallbackBody[idx] ?? fallbackBody[0] ?? "", 240)
+    }));
+  }
 
   return base;
 }
@@ -476,6 +526,8 @@ function renderInfographic(
     const gapY = 0.15;
     const cardW = (w - gapX * (cols - 1)) / cols;
     const cardH = (h - gapY * (rows - 1)) / rows;
+    const iconShapes = ["hexagon", "gear6", "lightningBolt", "diamond"] as const;
+    const shadow = { type: "outer", color: "000000", opacity: 0.12, blur: 10, offset: 2, angle: 45 } as const;
 
     for (let i = 0; i < n; i += 1) {
       const item = spec.items[i];
@@ -490,13 +542,32 @@ function renderInfographic(
         w: cardW,
         h: cardH,
         fill: { color: "F8FAFC" },
-        line: { color: STORY.soft, width: 1 }
+        line: { color: STORY.soft, width: 1 },
+        shadow
+      });
+
+      // Accent stripe + icon to reduce "flat" look.
+      slide.addShape("rect", {
+        x: cx,
+        y: cy,
+        w: cardW,
+        h: 0.08,
+        fill: { color: i % 2 === 0 ? STORY.accent : STORY.accent2, transparency: 10 },
+        line: { color: STORY.soft, transparency: 100 }
+      });
+      slide.addShape(iconShapes[i % iconShapes.length], {
+        x: cx + 0.15,
+        y: cy + 0.14,
+        w: 0.34,
+        h: 0.34,
+        fill: { color: i % 2 === 0 ? STORY.accent : STORY.accent2, transparency: 20 },
+        line: { color: i % 2 === 0 ? STORY.accent : STORY.accent2, transparency: 40 }
       });
 
       slide.addText(item.title, {
-        x: cx + 0.15,
-        y: cy + 0.12,
-        w: cardW - 0.3,
+        x: cx + 0.55,
+        y: cy + 0.13,
+        w: cardW - 0.7,
         h: 0.25,
         fontFace: "Calibri",
         fontSize: 11,
@@ -506,9 +577,9 @@ function renderInfographic(
       if (item.body?.trim()) {
         slide.addText(item.body, {
           x: cx + 0.15,
-          y: cy + 0.38,
+          y: cy + 0.45,
           w: cardW - 0.3,
-          h: cardH - 0.45,
+          h: cardH - 0.52,
           fontFace: "Calibri",
           fontSize: 10,
           color: STORY.muted,
@@ -523,6 +594,7 @@ function renderInfographic(
     const n = Math.max(1, Math.min(spec.items.length, 4));
     const gapY = 0.12;
     const cardH = (h - gapY * (n - 1)) / n;
+    const shadow = { type: "outer", color: "000000", opacity: 0.12, blur: 10, offset: 2, angle: 45 } as const;
     for (let i = 0; i < n; i += 1) {
       const item = spec.items[i];
       const cy = y + i * (cardH + gapY);
@@ -532,7 +604,16 @@ function renderInfographic(
         w,
         h: cardH,
         fill: { color: "F8FAFC" },
-        line: { color: STORY.soft, width: 1 }
+        line: { color: STORY.soft, width: 1 },
+        shadow
+      });
+      slide.addShape("rect", {
+        x,
+        y: cy,
+        w: 0.08,
+        h: cardH,
+        fill: { color: STORY.accent, transparency: 10 },
+        line: { color: STORY.accent, transparency: 100 }
       });
       slide.addShape("ellipse", {
         x: x + 0.15,
@@ -578,6 +659,18 @@ function renderInfographic(
           valign: "top"
         });
       }
+
+      // Connector arrow between steps.
+      if (i < n - 1) {
+        slide.addShape("downArrow", {
+          x: x + w / 2 - 0.12,
+          y: cy + cardH + 0.01,
+          w: 0.24,
+          h: 0.18,
+          fill: { color: STORY.accent2, transparency: 35 },
+          line: { color: STORY.accent2, transparency: 60 }
+        });
+      }
     }
     return;
   }
@@ -596,8 +689,15 @@ function renderInfographic(
   });
 }
 
-function addOverlayButtons(slide: PptxGenJS.Slide, params: { x: number; y: number; w: number }, labels: string[]) {
-  const cleaned = labels.map((label) => truncateText(label, 18)).filter(Boolean).slice(0, 3);
+function addOverlayButtons(
+  slide: PptxGenJS.Slide,
+  params: { x: number; y: number; w: number },
+  buttons: Array<{ label: string; slide?: number }>
+) {
+  const cleaned = buttons
+    .map((btn) => ({ label: truncateText(btn.label, 18), slide: btn.slide }))
+    .filter((btn) => Boolean(btn.label))
+    .slice(0, 3);
   if (!cleaned.length) return;
 
   const gap = 0.12;
@@ -606,15 +706,17 @@ function addOverlayButtons(slide: PptxGenJS.Slide, params: { x: number; y: numbe
 
   for (let i = 0; i < cleaned.length; i += 1) {
     const x = params.x + i * (btnW + gap);
+    const link = cleaned[i].slide ? { slide: cleaned[i].slide } : undefined;
     slide.addShape("roundRect", {
       x,
       y: params.y,
       w: btnW,
       h: btnH,
       fill: { color: "FFFFFF", transparency: 10 },
-      line: { color: STORY.soft, width: 1 }
+      line: { color: STORY.soft, width: 1 },
+      hyperlink: link
     });
-    slide.addText(cleaned[i], {
+    slide.addText(cleaned[i].label, {
       x,
       y: params.y + 0.03,
       w: btnW,
@@ -624,7 +726,8 @@ function addOverlayButtons(slide: PptxGenJS.Slide, params: { x: number; y: numbe
       fontFace: "Calibri",
       fontSize: 10,
       bold: true,
-      color: STORY.ink
+      color: STORY.ink,
+      hyperlink: link
     });
   }
 }
@@ -683,16 +786,21 @@ function addStoryTopBar(slide: PptxGenJS.Slide, params: { left: string; right?: 
   }
 }
 
-function addStoryFooterNav(slide: PptxGenJS.Slide) {
+function addStoryFooterNav(
+  slide: PptxGenJS.Slide,
+  links: { menuSlide: number; backSlide?: number; nextSlide?: number }
+) {
   const y = 6.92;
-  const btn = (x: number, label: string) => {
+  const btn = (x: number, label: string, targetSlide?: number) => {
+    const link = targetSlide ? { slide: targetSlide } : undefined;
     slide.addShape("roundRect", {
       x,
       y,
       w: 1.6,
       h: 0.42,
       fill: { color: STORY.card },
-      line: { color: STORY.soft, width: 1 }
+      line: { color: STORY.soft, width: 1 },
+      hyperlink: link
     });
     slide.addText(label, {
       x,
@@ -703,18 +811,25 @@ function addStoryFooterNav(slide: PptxGenJS.Slide) {
       valign: "middle",
       fontFace: "Calibri",
       fontSize: 11,
-      color: STORY.muted
+      color: STORY.muted,
+      hyperlink: link
     });
   };
-  btn(0.7, "Menu");
-  btn(2.45, "Atras");
-  btn(4.2, "Siguiente");
+  btn(0.7, "Menú", links.menuSlide);
+  btn(2.45, "Atrás", links.backSlide);
+  btn(4.2, "Siguiente", links.nextSlide);
 }
 
-function addStoryboardCover(pptx: PptxGenJS, output: InstructionalDesignOutput, visual: ResolvedVisual | null) {
+function addStoryboardCover(
+  pptx: PptxGenJS,
+  output: InstructionalDesignOutput,
+  visual: ResolvedVisual | null,
+  menuSlide: number
+) {
   const slide = pptx.addSlide();
   addStoryBackground(slide);
   addStoryTopBar(slide, { left: output.project.title, right: "PORTADA" });
+  const startLink = { slide: menuSlide };
 
   if (visual?.imagePath) {
     slide.addShape("roundRect", {
@@ -781,7 +896,8 @@ function addStoryboardCover(pptx: PptxGenJS, output: InstructionalDesignOutput, 
     y: 2.25,
     w: 3.2,
     h: 0.8,
-    fill: { color: STORY.accent }
+    fill: { color: STORY.accent },
+    hyperlink: startLink
   });
   slide.addText("Iniciar", {
     x: 1.0,
@@ -793,7 +909,8 @@ function addStoryboardCover(pptx: PptxGenJS, output: InstructionalDesignOutput, 
     fontFace: "Calibri",
     fontSize: 20,
     bold: true,
-    color: STORY.card
+    color: STORY.card,
+    hyperlink: startLink
   });
 
   slide.addText(
@@ -823,9 +940,17 @@ function addStoryboardCover(pptx: PptxGenJS, output: InstructionalDesignOutput, 
       ...(visual?.attributionLines?.length ? ["VISUAL / IMAGEN:", ...visual.attributionLines] : [])
     ].join("\n")
   );
+
+  addStoryFooterNav(slide, { menuSlide, nextSlide: menuSlide });
 }
 
-function addStoryboardMenu(pptx: PptxGenJS, output: InstructionalDesignOutput, visual: ResolvedVisual | null) {
+function addStoryboardMenu(
+  pptx: PptxGenJS,
+  output: InstructionalDesignOutput,
+  visual: ResolvedVisual | null,
+  menuTargets: Array<{ unitId: string; title: string; slide: number }>,
+  links: { menuSlide: number; backSlide?: number; nextSlide?: number }
+) {
   const slide = pptx.addSlide();
   addStoryBackground(slide);
   addStoryTopBar(slide, { left: output.project.title, right: "MENU" });
@@ -859,18 +984,79 @@ function addStoryboardMenu(pptx: PptxGenJS, output: InstructionalDesignOutput, v
     color: STORY.muted
   });
 
-  const items = output.course_structure.map((unit) => `${unit.unit_id}. ${unit.title}`);
-  slide.addText(bulletLines(items, 18), {
-    x: 1.0,
-    y: 1.85,
-    w: 5.8,
-    h: 4.55,
-    fontFace: "Calibri",
-    fontSize: 13,
-    color: STORY.ink,
-    valign: "top",
-    bullet: true
-  });
+  // Clickable menu buttons (prototype navigation).
+  const gapX = 0.18;
+  const gapY = 0.14;
+  const cols = 2;
+  const btnArea = { x: 1.0, y: 1.85, w: 5.8, h: 4.55 };
+  const btnW = (btnArea.w - gapX * (cols - 1)) / cols;
+  const btnH = 0.56;
+
+  const targets = menuTargets.slice(0, 16);
+  for (let idx = 0; idx < targets.length; idx += 1) {
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
+    const bx = btnArea.x + col * (btnW + gapX);
+    const by = btnArea.y + row * (btnH + gapY);
+    if (by + btnH > btnArea.y + btnArea.h + 0.05) break;
+
+    const link = { slide: targets[idx].slide };
+    slide.addShape("roundRect", {
+      x: bx,
+      y: by,
+      w: btnW,
+      h: btnH,
+      fill: { color: "F8FAFC" },
+      line: { color: STORY.soft, width: 1 },
+      shadow: { type: "outer", color: "000000", opacity: 0.10, blur: 8, offset: 1, angle: 45 },
+      hyperlink: link
+    });
+    slide.addShape("ellipse", {
+      x: bx + 0.12,
+      y: by + 0.14,
+      w: 0.28,
+      h: 0.28,
+      fill: { color: STORY.accent, transparency: 5 },
+      line: { color: STORY.accent, transparency: 20 },
+      hyperlink: link
+    });
+    slide.addText(truncateText(targets[idx].unitId, 6), {
+      x: bx + 0.12,
+      y: by + 0.15,
+      w: 0.28,
+      h: 0.26,
+      align: "center",
+      valign: "middle",
+      fontFace: "Calibri",
+      fontSize: 10,
+      bold: true,
+      color: STORY.card,
+      hyperlink: link
+    });
+    slide.addText(truncateText(targets[idx].title, 44), {
+      x: bx + 0.46,
+      y: by + 0.12,
+      w: btnW - 0.56,
+      h: btnH - 0.22,
+      fontFace: "Calibri",
+      fontSize: 12,
+      bold: true,
+      color: STORY.ink,
+      valign: "top",
+      hyperlink: link
+    });
+    slide.addText("Abrir", {
+      x: bx + btnW - 0.9,
+      y: by + btnH - 0.26,
+      w: 0.8,
+      h: 0.2,
+      fontFace: "Calibri",
+      fontSize: 10,
+      color: STORY.muted,
+      align: "right",
+      hyperlink: link
+    });
+  }
 
   // Visual panel (right)
   if (visual?.imagePath) {
@@ -904,7 +1090,7 @@ function addStoryboardMenu(pptx: PptxGenJS, output: InstructionalDesignOutput, v
     });
   }
 
-  addStoryFooterNav(slide);
+  addStoryFooterNav(slide, links);
 
   slide.addNotes(
     [
@@ -923,6 +1109,113 @@ function addStoryboardMenu(pptx: PptxGenJS, output: InstructionalDesignOutput, v
   );
 }
 
+function addPopupSlide(pptx: PptxGenJS, params: {
+  courseTitle: string;
+  unit: CourseUnit;
+  popup: StoryPopupSpec;
+  mainSlide: number;
+  links: { menuSlide: number; backSlide?: number; nextSlide?: number };
+  visual: ResolvedVisual | null;
+  notes: string;
+}) {
+  const slide = pptx.addSlide();
+
+  if (params.visual?.imagePath) {
+    slide.background = { path: params.visual.imagePath };
+  } else {
+    slide.background = { color: STORY.bg };
+  }
+
+  // Dark overlay so popup content is readable over the background image.
+  slide.addShape("rect", {
+    x: 0,
+    y: 0,
+    w: 13.33,
+    h: 7.5,
+    fill: { color: STORY.ink, transparency: 35 },
+    line: { color: STORY.ink, transparency: 100 }
+  });
+
+  addStoryTopBar(slide, { left: `${params.unit.unit_id} - ${params.unit.title}`, right: "POPUP" });
+
+  const closeLink = { slide: params.mainSlide };
+
+  slide.addShape("roundRect", {
+    x: 1.15,
+    y: 1.15,
+    w: 11.05,
+    h: 5.55,
+    fill: { color: STORY.card, transparency: 0 },
+    line: { color: STORY.soft, width: 1 },
+    shadow: { type: "outer", color: "000000", opacity: 0.16, blur: 16, offset: 3, angle: 45 }
+  });
+
+  slide.addShape("rect", {
+    x: 1.15,
+    y: 1.15,
+    w: 11.05,
+    h: 0.16,
+    fill: { color: STORY.accent, transparency: 10 },
+    line: { color: STORY.accent, transparency: 100 }
+  });
+
+  slide.addText(truncateText(params.popup.title, 80), {
+    x: 1.55,
+    y: 1.45,
+    w: 9.2,
+    h: 0.45,
+    fontFace: "Calibri",
+    fontSize: 24,
+    bold: true,
+    color: STORY.ink
+  });
+
+  slide.addText(params.popup.body?.trim() ? truncateText(params.popup.body, 800) : "(Contenido emergente)", {
+    x: 1.55,
+    y: 2.05,
+    w: 10.65,
+    h: 4.25,
+    fontFace: "Calibri",
+    fontSize: 14,
+    color: STORY.muted,
+    valign: "top"
+  });
+
+  slide.addShape("roundRect", {
+    x: 10.55,
+    y: 1.43,
+    w: 1.5,
+    h: 0.42,
+    fill: { color: STORY.accent },
+    hyperlink: closeLink
+  });
+  slide.addText("Cerrar", {
+    x: 10.55,
+    y: 1.46,
+    w: 1.5,
+    h: 0.36,
+    align: "center",
+    valign: "middle",
+    fontFace: "Calibri",
+    fontSize: 12,
+    bold: true,
+    color: STORY.card,
+    hyperlink: closeLink
+  });
+
+  if (params.visual?.watermarkLabel) {
+    addVisualWatermark(slide, { x: 0.3, y: 0.2, w: 12.7, h: 7.1, label: params.visual.watermarkLabel });
+  }
+
+  addStoryFooterNav(slide, {
+    menuSlide: params.links.menuSlide,
+    backSlide: params.mainSlide,
+    nextSlide: params.mainSlide
+  });
+
+  slide.addNotes(params.notes);
+}
+
 async function toPptxBufferStoryboard(
   output: InstructionalDesignOutput,
   options?: { courseName?: string }
@@ -936,25 +1229,64 @@ async function toPptxBufferStoryboard(
 
   const courseName = options?.courseName?.trim().length ? options.courseName.trim() : output.project.title;
   const coverQuery = `${courseName} educacion digital ilustracion`;
-  const coverVisual = await resolveFreepikVisual({ courseName, term: coverQuery, preferHorizontal: true });
+  const coverVisual = await resolveStoryboardVisual({ courseName, term: coverQuery, preferHorizontal: true });
 
-  addStoryboardCover(pptx, output, coverVisual);
-  addStoryboardMenu(pptx, output, coverVisual);
+  const coverSlideNo = 1;
+  const menuSlideNo = 2;
+  const mainSlideStart = 3;
+  const unitCount = output.course_structure.length;
+  const mainSlideNos = output.course_structure.map((_, idx) => mainSlideStart + idx);
 
-  for (const unit of output.course_structure) {
-    const audioScript = pickResourceByType(unit, "guion_audio");
-    const build = pickResourceByType(unit, "notas_construccion");
-    const visualQuery =
-      pickResourceByType(unit, "imagen_query")?.trim() || `${unit.title} ilustracion plana`;
+  // Pre-parse visual specs so we can allocate popup slide numbers deterministically.
+  const unitSpecs = output.course_structure.map((unit) => {
     const visualSpecRaw = pickResourceByType(unit, "visual_spec");
     const visualSpec = parseVisualSpec(visualSpecRaw, { title: unit.title, content: unit.content_outline });
-    const visual = await resolveFreepikVisual({ courseName, term: visualQuery, preferHorizontal: true });
+    const visualQuery = pickResourceByType(unit, "imagen_query")?.trim() || `${unit.title} ilustracion plana`;
+    return { unit, visualSpecRaw, visualSpec, visualQuery };
+  });
+
+  const popupStart = mainSlideStart + unitCount;
+  let nextPopupSlide = popupStart;
+  const popupSlideNosByUnit: number[][] = unitSpecs.map((spec) => {
+    const popups = spec.visualSpec.popups.slice(0, 3);
+    const out: number[] = [];
+    for (let i = 0; i < popups.length; i += 1) out.push(nextPopupSlide++);
+    return out;
+  });
+
+  addStoryboardCover(pptx, output, coverVisual, menuSlideNo);
+  addStoryboardMenu(
+    pptx,
+    output,
+    coverVisual,
+    output.course_structure.map((unit, idx) => ({
+      unitId: unit.unit_id,
+      title: unit.title,
+      slide: mainSlideNos[idx] ?? menuSlideNo
+    })),
+    {
+      menuSlide: menuSlideNo,
+      backSlide: coverSlideNo,
+      nextSlide: mainSlideNos[0] ?? menuSlideNo
+    }
+  );
+
+  // Main slides (one per unit)
+  const resolvedVisuals: Array<ResolvedVisual | null> = [];
+  for (let idx = 0; idx < unitSpecs.length; idx += 1) {
+    const { unit, visualQuery, visualSpec, visualSpecRaw } = unitSpecs[idx];
+    const audioScript = pickResourceByType(unit, "guion_audio");
+    const build = pickResourceByType(unit, "notas_construccion");
     const resources = otherResources(unit).map(formatResource);
     const interactivity = buildInteractivityLines(unit);
 
+    const visual = await resolveStoryboardVisual({ courseName, term: visualQuery, preferHorizontal: true });
+    resolvedVisuals.push(visual);
+
     const slide = pptx.addSlide();
     addStoryBackground(slide);
-    addStoryTopBar(slide, { left: `${unit.unit_id} - ${unit.title}`, right: unit.unit_id });
+    const progress = `${idx + 1}/${unitCount}`;
+    addStoryTopBar(slide, { left: `${unit.unit_id} - ${unit.title}`, right: `${unit.unit_id} ${progress}` });
 
     // Left content card
     slide.addShape("roundRect", {
@@ -1081,11 +1413,23 @@ async function toPptxBufferStoryboard(
 
     // Mock UI buttons/hotspots over the visual (Genially-style).
     if (visualSpec.buttons.length) {
-      addOverlayButtons(slide, { x: 7.35, y: 6.18, w: 5.08 }, visualSpec.buttons);
+      const popupSlideNos = popupSlideNosByUnit[idx] ?? [];
+      const popupByKey = new Map<string, number>();
+      for (let p = 0; p < visualSpec.popups.length && p < popupSlideNos.length; p += 1) {
+        popupByKey.set(normalizeKey(visualSpec.popups[p].button), popupSlideNos[p]);
+      }
+
+      const overlayButtons = visualSpec.buttons.slice(0, 3).map((label) => ({
+        label,
+        slide: popupByKey.get(normalizeKey(label))
+      }));
+      addOverlayButtons(slide, { x: 7.35, y: 6.18, w: 5.08 }, overlayButtons);
     }
 
     // Footer: navigation + resource chips
-    addStoryFooterNav(slide);
+    const backSlide = idx === 0 ? menuSlideNo : (mainSlideNos[idx - 1] ?? menuSlideNo);
+    const nextSlide = idx === unitCount - 1 ? menuSlideNo : (mainSlideNos[idx + 1] ?? menuSlideNo);
+    addStoryFooterNav(slide, { menuSlide: menuSlideNo, backSlide, nextSlide });
     const chipSources = otherResources(unit).slice(0, 3).map((res) => safeLine(res.type || "recurso"));
     slide.addText("Recursos:", {
       x: 6.05,
@@ -1136,6 +1480,46 @@ async function toPptxBufferStoryboard(
       extraResources: resources
     });
     slide.addNotes(notes);
+  }
+
+  // Popup slides (simulated interactivity)
+  for (let idx = 0; idx < unitSpecs.length; idx += 1) {
+    const { unit, visualSpec, visualQuery, visualSpecRaw } = unitSpecs[idx];
+    const popups = visualSpec.popups.slice(0, 3);
+    if (!popups.length) continue;
+
+    const audioScript = pickResourceByType(unit, "guion_audio");
+    const build = pickResourceByType(unit, "notas_construccion");
+    const resources = otherResources(unit).map(formatResource);
+    const interactivity = buildInteractivityLines(unit);
+
+    const mainSlide = mainSlideNos[idx] ?? menuSlideNo;
+    const visual = resolvedVisuals[idx] ?? null;
+
+    const baseNotes = buildNotes({
+      courseTitle: output.project.title,
+      unit,
+      audioScript,
+      buildNotes: build,
+      studentText: unit.content_outline,
+      interactivity,
+      visualQuery,
+      visualAttribution: visual?.attributionLines ?? [],
+      visualSpecRaw,
+      extraResources: resources
+    });
+
+    for (let p = 0; p < popups.length; p += 1) {
+      addPopupSlide(pptx, {
+        courseTitle: output.project.title,
+        unit,
+        popup: popups[p],
+        mainSlide,
+        links: { menuSlide: menuSlideNo },
+        visual,
+        notes: `${baseNotes}\n\nPOPUP (${p + 1}/${popups.length}): ${popups[p].button}`
+      });
+    }
   }
 
   return toNodeBuffer(pptx);

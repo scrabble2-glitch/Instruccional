@@ -217,7 +217,7 @@ function buildCacheKey(request: GenerateRequest, context: BuildContextResult, mo
     editInstruction: request.requestType === "refine" ? request.editInstruction : undefined,
     targetSection: request.requestType === "refine" ? request.targetSection : undefined,
     previousJson: context.previousJson,
-    promptVersion: "2026-02-14"
+    promptVersion: "2026-02-14-visual2"
   };
 
   return sha256(JSON.stringify(payload));

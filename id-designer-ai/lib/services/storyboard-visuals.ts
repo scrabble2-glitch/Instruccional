@@ -2,9 +2,7 @@ import crypto from "crypto";
 import path from "path";
 import { promises as fs } from "fs";
 import { ensureCourseFolderLocal } from "@/lib/local/course-folders";
-import { searchFreepikImage } from "@/lib/freepik/client";
 import { searchOpenverseImage } from "@/lib/openverse/client";
-import { env } from "@/lib/env";
 
 export interface ResolvedVisual {
   imagePath: string;
@@ -74,8 +72,7 @@ export async function resolveStoryboardVisual(params: {
     try {
       const assetsDir = await resolveAssetsDir(params.courseName);
       const preferHorizontal = params.preferHorizontal ?? true;
-      const providerHint = env.FREEPIK_API_KEY?.trim().length ? "freepik" : "openverse";
-      const base = sha256Short(`${providerHint}|${term}|${preferHorizontal}`);
+      const base = sha256Short(`openverse|${term}|${preferHorizontal}`);
       const metaPath = path.join(assetsDir, `${base}.meta.json`);
 
       if (await pathExists(metaPath)) {
@@ -96,17 +93,9 @@ export async function resolveStoryboardVisual(params: {
         }
       }
 
-      // Provider selection:
-      // - Use Freepik only if API key is configured.
-      // - Otherwise use Openverse (no API key required).
-      const freepik =
-        env.FREEPIK_API_KEY?.trim().length
-          ? await searchFreepikImage({ term, preferHorizontal, limit: 16 })
-          : null;
-
-      const openverse = freepik ? null : await searchOpenverseImage({ term, preferHorizontal, pageSize: 25 });
-
-      const imageUrl = freepik?.imageUrl ?? openverse?.imageUrl ?? "";
+      // Image provider: Openverse (no API key required).
+      const openverse = await searchOpenverseImage({ term, preferHorizontal, pageSize: 25 });
+      const imageUrl = openverse?.imageUrl ?? "";
       if (!imageUrl) return null;
 
       const imageRes = await fetch(imageUrl, { method: "GET" });
@@ -120,25 +109,15 @@ export async function resolveStoryboardVisual(params: {
       await fs.writeFile(imagePath, Buffer.from(arrayBuffer));
 
       const attributionLines: string[] = [];
-      let provider: string = "unknown";
-      let watermarkLabel: string | undefined;
+      const provider: string = "openverse";
+      const watermarkLabel: string | undefined = "PREVISUALIZACION";
 
-      if (freepik) {
-        provider = "freepik";
-        attributionLines.push(`Imagen: ${freepik.title}`);
-        attributionLines.push(`Fuente: ${freepik.pageUrl ?? freepik.imageUrl}`);
-        if (freepik.authorName) attributionLines.push(`Autor: ${freepik.authorName}`);
-        if (freepik.licenseUrl) attributionLines.push(`Licencia: ${freepik.licenseUrl}`);
-      } else if (openverse) {
-        provider = "openverse";
-        watermarkLabel = "PREVISUALIZACION";
-        attributionLines.push(`Imagen: ${openverse.title}`);
-        attributionLines.push(`Fuente: ${openverse.pageUrl ?? openverse.imageUrl}`);
-        if (openverse.creator) attributionLines.push(`Autor: ${openverse.creator}`);
-        if (openverse.license) attributionLines.push(`Licencia: ${openverse.license}`);
-        if (openverse.licenseUrl) attributionLines.push(`Licencia URL: ${openverse.licenseUrl}`);
-        if (openverse.provider) attributionLines.push(`Proveedor: ${openverse.provider}`);
-      }
+      attributionLines.push(`Imagen: ${openverse?.title ?? "N/D"}`);
+      attributionLines.push(`Fuente: ${openverse?.pageUrl ?? openverse?.imageUrl ?? "N/D"}`);
+      if (openverse?.creator) attributionLines.push(`Autor: ${openverse.creator}`);
+      if (openverse?.license) attributionLines.push(`Licencia: ${openverse.license}`);
+      if (openverse?.licenseUrl) attributionLines.push(`Licencia URL: ${openverse.licenseUrl}`);
+      if (openverse?.provider) attributionLines.push(`Proveedor: ${openverse.provider}`);
 
       await fs.writeFile(
         metaPath,
@@ -146,10 +125,10 @@ export async function resolveStoryboardVisual(params: {
           {
             provider,
             term,
-            id: freepik?.id ?? openverse?.id ?? "unknown",
+            id: openverse?.id ?? "unknown",
             fileName,
             fetchedAt: new Date().toISOString(),
-            pageUrl: freepik?.pageUrl ?? openverse?.pageUrl ?? null,
+            pageUrl: openverse?.pageUrl ?? null,
             imageUrl,
             attributionLines,
             watermarkLabel

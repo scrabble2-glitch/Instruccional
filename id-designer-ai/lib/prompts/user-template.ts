@@ -74,6 +74,8 @@ Instrucciones de guardrail:
 - Si falta información crítica, formula preguntas concretas en production_notes.risks.
 - Evita alucinaciones: no cites fuentes específicas ni datos no verificables.
 - Para recursos externos, usa descripciones genéricas y placeholders.
+- Si el material base es muy extenso, confuso o contradictorio, agrega en production_notes.risks un item que empiece por:
+  - "NOTEBOOKLM:" seguido de un prompt corto + 3-5 preguntas guía para analizar el material en NotebookLM (solo sugerencia; no intentes usar NotebookLM directamente).
 - Si el modo es "guion técnico instruccional (storyboard de OVA)":
   - Interpreta course_structure como una secuencia de pantallas/escenas. Cada item representa 1 pantalla (o 1 pantalla por parte si es muy extensa).
   - La presentación debe quedar lista para producción: texto en pantalla + interactividad + guion de audio + notas de construcción.
@@ -86,7 +88,7 @@ Instrucciones de guardrail:
       Además, agrega obligatoriamente 4 recursos especiales por pantalla (sin links reales):
       1) { type: "guion_audio", title: "<guion completo de narración para esa pantalla>", link_optional: "" }
       2) { type: "notas_construccion", title: "<instrucciones de construcción (capas, botones, estados, triggers, navegación) + textos emergentes si aplica>", link_optional: "" }
-      3) { type: "imagen_query", title: "<término de búsqueda para Freepik (3-8 palabras) + estilo visual sugerido (ej. 'ilustración plana', 'foto realista')>", link_optional: "" }
+      3) { type: "imagen_query", title: "<término de búsqueda para banco de imágenes (3-8 palabras) + estilo visual sugerido (ej. 'ilustración plana', 'foto realista')>", link_optional: "" }
       4) { type: "visual_spec", title: "<especificación visual de la infografía y componentes UI en formato texto>", link_optional: "" }
 
       Formato requerido para "visual_spec" (texto, NO JSON), ejemplo:
@@ -95,13 +97,18 @@ Instrucciones de guardrail:
       - Paso 1 | Título corto | Texto muy breve (<= 120 caracteres)
       - Paso 2 | Título corto | Texto muy breve
       - Paso 3 | Título corto | Texto muy breve
-      buttons: Menú, Siguiente, Ver ejemplo
+      buttons: Ver ejemplo, Tip
+      popups:
+      - Ver ejemplo | Ejemplo | Texto emergente breve (<= 220 caracteres)
+      - Tip | Recomendación | Texto emergente breve
 
       Reglas "visual_spec":
       - layout permitido: process_steps | cards | timeline | bullets
       - items: 2 a 5 elementos (título y texto breve). Deben corresponder al contenido de la pantalla.
-      - buttons: 0 a 4 botones (labels) que se verán en pantalla (y se usarán como hotspots/pop-ups).
+      - buttons: 0 a 4 botones (labels) visibles en pantalla (hotspots).
+      - popups: si defines buttons, define también popups (1 por botón) con el texto emergente que verá el estudiante.
       - No incluyas links.
+      - Piensa en estilo "Genially": poco texto, jerarquía visual, tarjetas, íconos, y acciones claras (botones + popups).
   - El guion de audio debe ser natural, profesional y coherente con el texto en pantalla.
   - En keep_all: no omitas contenido; distribúyelo en pantallas sin perder el orden general.
 ${strategyGuidance}
@@ -144,9 +151,10 @@ Reglas:
    - { type: "guion_audio", title: "<guion completo de narración para esa pantalla>", link_optional: "" }
    - { type: "notas_construccion", title: "<instrucciones de construcción + textos emergentes si aplica>", link_optional: "" }
 4) Además, incluye un recurso:
-   - { type: "imagen_query", title: "<término de búsqueda para Freepik (3-8 palabras) + estilo visual>", link_optional: "" }
+   - { type: "imagen_query", title: "<término de búsqueda para banco de imágenes (3-8 palabras) + estilo visual>", link_optional: "" }
 5) Además, incluye un recurso:
-   - { type: "visual_spec", title: "<layout + items + buttons (formato texto; NO JSON)>", link_optional: "" }
+   - { type: "visual_spec", title: "<layout + items + buttons + popups (formato texto; NO JSON)>", link_optional: "" }
+   - Si defines buttons en visual_spec, define popups (1 por botón) con el texto emergente.
 6) No inventes links reales.
 
 Issues detectados:

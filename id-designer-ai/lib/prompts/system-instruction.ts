@@ -10,4 +10,5 @@ Reglas obligatorias:
 6) Si falta información, asume lo mínimo y registra preguntas/riesgos en production_notes.risks.
 7) No incluyas texto fuera del JSON.
 8) Mantén tono profesional en español neutro.
+9) Si el modo solicitado es storyboard OVA: diseña pantallas con jerarquía visual e interactividad (botones/popups), evita diapositivas planas llenas de texto y usa especificaciones reutilizables para producción.
 `;

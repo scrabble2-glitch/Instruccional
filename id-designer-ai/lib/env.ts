@@ -15,9 +15,6 @@ const EnvSchema = z.object({
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(20),
   INPUT_TOKEN_COST_PER_MILLION: z.coerce.number().nonnegative().default(0.1),
   OUTPUT_TOKEN_COST_PER_MILLION: z.coerce.number().nonnegative().default(0.4),
-  // Freepik (optional) - used to fetch slide visuals for PPTX storyboard exports.
-  FREEPIK_API_KEY: z.string().default(""),
-  FREEPIK_API_BASE_URL: z.string().url().default("https://api.freepik.com"),
   // Cloudflare R2 (S3 compatible) - optional
   R2_ACCOUNT_ID: z.string().default(""),
   R2_ACCESS_KEY_ID: z.string().default(""),
@@ -42,8 +39,6 @@ export const env = EnvSchema.parse({
   RATE_LIMIT_PER_MINUTE: process.env.RATE_LIMIT_PER_MINUTE,
   INPUT_TOKEN_COST_PER_MILLION: process.env.INPUT_TOKEN_COST_PER_MILLION,
   OUTPUT_TOKEN_COST_PER_MILLION: process.env.OUTPUT_TOKEN_COST_PER_MILLION,
-  FREEPIK_API_KEY: process.env.FREEPIK_API_KEY,
-  FREEPIK_API_BASE_URL: process.env.FREEPIK_API_BASE_URL,
   R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
   R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
   R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
