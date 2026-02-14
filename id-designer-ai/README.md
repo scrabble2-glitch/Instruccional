@@ -225,15 +225,20 @@ Si configuras `R2_*`, en cada generación de un **nuevo curso** se asegura la ex
 
 Esto evita colisiones entre nombres similares y mantiene el almacenamiento organizado por curso.
 
-## Freepik (opcional)
+## Imágenes (sin API key) + Freepik (opcional)
 
-Si configuras `FREEPIK_API_KEY`, el exportador PPTX del modo **Storyboard OVA** intentará:
+En el exportador PPTX del modo **Storyboard OVA**:
 
-- Generar una imagen por pantalla (unidad) descargándola desde el catálogo de Freepik (vía API oficial).
+- Si **NO** configuras `FREEPIK_API_KEY`, la app intenta buscar imágenes en **Openverse** (sin API key) y coloca una marca de agua `PREVISUALIZACION` sobre el visual.
+- Si configuras `FREEPIK_API_KEY`, se prioriza Freepik (API oficial) y no se agrega marca de agua por defecto.
+
+En ambos casos se intenta:
+
+- Generar una imagen por pantalla (unidad) descargándola desde Openverse (sin API key) o Freepik (API oficial, si está configurada).
 - Guardar/cachar las imágenes en `LOCAL_COURSE_ROOT_DIR/<curso>/assets/` cuando esté configurado.
 - Registrar en las Notas del orador la atribución (título/fuente/licencia si está disponible).
 
-Si no está configurado, se usa un placeholder visual (formas) para no dejar la diapositiva "solo texto".
+Si falla la descarga (red/permiso/imagen), se usa un placeholder visual (formas) para no dejar la diapositiva "solo texto".
 
 ## Carpetas locales por curso (opcional)
 

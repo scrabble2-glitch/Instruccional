@@ -273,6 +273,29 @@ function clampLines(lines: string[], maxLines: number, maxLineChars: number): st
   return [...cleaned.slice(0, maxLines - 1), `(+${cleaned.length - (maxLines - 1)} más)`];
 }
 
+function addVisualWatermark(
+  slide: PptxGenJS.Slide,
+  params: { x: number; y: number; w: number; h: number; label: string }
+) {
+  const label = safeLine(params.label);
+  if (!label) return;
+
+  // "Draft" watermark to signal the visual is provisional and must be reviewed/licensed.
+  slide.addText(label, {
+    x: params.x,
+    y: params.y + params.h / 2 - 0.3,
+    w: params.w,
+    h: 0.6,
+    align: "center",
+    valign: "middle",
+    fontFace: "Calibri",
+    fontSize: 34,
+    bold: true,
+    color: "CBD5E1",
+    rotate: -25
+  });
+}
+
 function addStoryBackground(slide: PptxGenJS.Slide) {
   slide.addShape("rect", { x: 0, y: 0, w: 13.33, h: 7.5, fill: { color: STORY.bg } });
   slide.addShape("ellipse", {
@@ -377,6 +400,9 @@ function addStoryboardCover(pptx: PptxGenJS, output: InstructionalDesignOutput, 
       h: 5.95,
       sizing: { type: "cover", w: 5.38, h: 5.95 }
     });
+    if (visual.watermarkLabel) {
+      addVisualWatermark(slide, { x: 7.2, y: 0.8, w: 5.38, h: 5.95, label: visual.watermarkLabel });
+    }
   } else {
     slide.addShape("roundRect", {
       x: 7.15,
@@ -531,6 +557,9 @@ function addStoryboardMenu(pptx: PptxGenJS, output: InstructionalDesignOutput, v
       h: 5.7,
       sizing: { type: "cover", w: 5.38, h: 5.7 }
     });
+    if (visual.watermarkLabel) {
+      addVisualWatermark(slide, { x: 7.2, y: 0.9, w: 5.38, h: 5.7, label: visual.watermarkLabel });
+    }
   } else {
     slide.addShape("roundRect", {
       x: 7.15,
@@ -697,6 +726,9 @@ async function toPptxBufferStoryboard(
         h: 5.75,
         sizing: { type: "cover", w: 5.38, h: 5.75 }
       });
+      if (visual.watermarkLabel) {
+        addVisualWatermark(slide, { x: 7.2, y: 0.8, w: 5.38, h: 5.75, label: visual.watermarkLabel });
+      }
     } else {
       slide.addShape("rect", {
         x: 7.2,

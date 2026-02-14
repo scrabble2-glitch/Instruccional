@@ -3,10 +3,14 @@ import path from "path";
 import { promises as fs } from "fs";
 import { ensureCourseFolderLocal } from "@/lib/local/course-folders";
 import { searchFreepikImage } from "@/lib/freepik/client";
+import { searchOpenverseImage } from "@/lib/openverse/client";
+import { env } from "@/lib/env";
 
 export interface ResolvedVisual {
   imagePath: string;
   attributionLines: string[];
+  watermarkLabel?: string;
+  provider?: string;
 }
 
 function sha256Short(value: string): string {
@@ -51,11 +55,14 @@ async function resolveAssetsDir(courseName: string): Promise<string> {
 
 const inMemoryCache = new Map<string, Promise<ResolvedVisual | null>>();
 
-export async function resolveFreepikVisual(params: {
+export async function resolveStoryboardVisual(params: {
   courseName: string;
   term: string;
   preferHorizontal?: boolean;
 }): Promise<ResolvedVisual | null> {
+  // Avoid external calls in unit tests.
+  if (process.env.NODE_ENV === "test") return null;
+
   const term = params.term.trim();
   if (!term) return null;
 
@@ -66,7 +73,9 @@ export async function resolveFreepikVisual(params: {
   const promise = (async (): Promise<ResolvedVisual | null> => {
     try {
       const assetsDir = await resolveAssetsDir(params.courseName);
-      const base = sha256Short(`freepik|${term}|${params.preferHorizontal ?? true}`);
+      const preferHorizontal = params.preferHorizontal ?? true;
+      const providerHint = env.FREEPIK_API_KEY?.trim().length ? "freepik" : "openverse";
+      const base = sha256Short(`${providerHint}|${term}|${preferHorizontal}`);
       const metaPath = path.join(assetsDir, `${base}.meta.json`);
 
       if (await pathExists(metaPath)) {
@@ -78,22 +87,29 @@ export async function resolveFreepikVisual(params: {
             const attributionLines = Array.isArray(meta?.attributionLines)
               ? meta.attributionLines.map((line: unknown) => String(line))
               : [];
-            return { imagePath, attributionLines };
+            const watermarkLabel = typeof meta?.watermarkLabel === "string" ? meta.watermarkLabel : undefined;
+            const provider = typeof meta?.provider === "string" ? meta.provider : undefined;
+            return { imagePath, attributionLines, watermarkLabel, provider };
           }
         } catch {
           // If meta is corrupted, ignore and refetch.
         }
       }
 
-      const found = await searchFreepikImage({
-        term,
-        preferHorizontal: params.preferHorizontal ?? true,
-        limit: 16
-      });
+      // Provider selection:
+      // - Use Freepik only if API key is configured.
+      // - Otherwise use Openverse (no API key required).
+      const freepik =
+        env.FREEPIK_API_KEY?.trim().length
+          ? await searchFreepikImage({ term, preferHorizontal, limit: 16 })
+          : null;
 
-      if (!found) return null;
+      const openverse = freepik ? null : await searchOpenverseImage({ term, preferHorizontal, pageSize: 25 });
 
-      const imageRes = await fetch(found.imageUrl, { method: "GET" });
+      const imageUrl = freepik?.imageUrl ?? openverse?.imageUrl ?? "";
+      if (!imageUrl) return null;
+
+      const imageRes = await fetch(imageUrl, { method: "GET" });
       if (!imageRes.ok) return null;
 
       const arrayBuffer = await imageRes.arrayBuffer();
@@ -104,23 +120,39 @@ export async function resolveFreepikVisual(params: {
       await fs.writeFile(imagePath, Buffer.from(arrayBuffer));
 
       const attributionLines: string[] = [];
-      attributionLines.push(`Imagen: ${found.title}`);
-      attributionLines.push(`Fuente: ${found.pageUrl ?? found.imageUrl}`);
-      if (found.authorName) attributionLines.push(`Autor: ${found.authorName}`);
-      if (found.licenseUrl) attributionLines.push(`Licencia: ${found.licenseUrl}`);
+      let provider: string = "unknown";
+      let watermarkLabel: string | undefined;
+
+      if (freepik) {
+        provider = "freepik";
+        attributionLines.push(`Imagen: ${freepik.title}`);
+        attributionLines.push(`Fuente: ${freepik.pageUrl ?? freepik.imageUrl}`);
+        if (freepik.authorName) attributionLines.push(`Autor: ${freepik.authorName}`);
+        if (freepik.licenseUrl) attributionLines.push(`Licencia: ${freepik.licenseUrl}`);
+      } else if (openverse) {
+        provider = "openverse";
+        watermarkLabel = "PREVISUALIZACION";
+        attributionLines.push(`Imagen: ${openverse.title}`);
+        attributionLines.push(`Fuente: ${openverse.pageUrl ?? openverse.imageUrl}`);
+        if (openverse.creator) attributionLines.push(`Autor: ${openverse.creator}`);
+        if (openverse.license) attributionLines.push(`Licencia: ${openverse.license}`);
+        if (openverse.licenseUrl) attributionLines.push(`Licencia URL: ${openverse.licenseUrl}`);
+        if (openverse.provider) attributionLines.push(`Proveedor: ${openverse.provider}`);
+      }
 
       await fs.writeFile(
         metaPath,
         JSON.stringify(
           {
-            provider: "freepik",
+            provider,
             term,
-            id: found.id,
+            id: freepik?.id ?? openverse?.id ?? "unknown",
             fileName,
             fetchedAt: new Date().toISOString(),
-            pageUrl: found.pageUrl,
-            imageUrl: found.imageUrl,
-            attributionLines
+            pageUrl: freepik?.pageUrl ?? openverse?.pageUrl ?? null,
+            imageUrl,
+            attributionLines,
+            watermarkLabel
           },
           null,
           2
@@ -128,7 +160,7 @@ export async function resolveFreepikVisual(params: {
         "utf8"
       );
 
-      return { imagePath, attributionLines };
+      return { imagePath, attributionLines, watermarkLabel, provider };
     } catch {
       // Best-effort: never break PPTX generation on visuals.
       return null;
@@ -139,3 +171,5 @@ export async function resolveFreepikVisual(params: {
   return promise;
 }
 
+// Backwards compatibility for older imports.
+export const resolveFreepikVisual = resolveStoryboardVisual;
