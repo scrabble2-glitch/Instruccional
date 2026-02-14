@@ -1,5 +1,6 @@
 import PptxGenJS from "pptxgenjs";
 import type { InstructionalDesignOutput } from "@/lib/validators/output-schema";
+import { resolveFreepikVisual, type ResolvedVisual } from "@/lib/services/storyboard-visuals";
 
 export type PptxExportMode = "full" | "evaluation-only" | "ova-storyboard";
 
@@ -176,7 +177,7 @@ function pickResourceByType(unit: CourseUnit, type: string): string | null {
 function otherResources(unit: CourseUnit): CourseUnit["resources"] {
   return unit.resources.filter((resource) => {
     const key = normalizeKey(resource.type || "");
-    return key !== "guion_audio" && key !== "notas_construccion";
+    return key !== "guion_audio" && key !== "notas_construccion" && key !== "imagen_query";
   });
 }
 
@@ -185,6 +186,10 @@ function buildNotes(params: {
   unit: CourseUnit;
   audioScript: string | null;
   buildNotes: string | null;
+  studentText: string[];
+  interactivity: string[];
+  visualQuery: string | null;
+  visualAttribution: string[];
   extraResources: string[];
 }): string {
   const lines: string[] = [];
@@ -200,6 +205,23 @@ function buildNotes(params: {
 
   lines.push("NOTAS DE CONSTRUCCION:");
   lines.push(params.buildNotes?.trim() ? params.buildNotes.trim() : "(No provistas por IA. Regenera para completar.)");
+  lines.push("");
+
+  lines.push("TEXTO EN PANTALLA (completo):");
+  lines.push(bulletLines(params.studentText, 80));
+  lines.push("");
+
+  lines.push("INTERACTIVIDAD (completa):");
+  lines.push(bulletLines(params.interactivity, 60));
+  lines.push("");
+
+  lines.push("VISUAL / IMAGEN (Freepik):");
+  lines.push(`Query: ${params.visualQuery?.trim() ? safeLine(params.visualQuery) : "N/D (se usó fallback automático)"}`);
+  if (params.visualAttribution.length) {
+    for (const line of params.visualAttribution) lines.push(safeLine(line));
+  } else {
+    lines.push("(Sin imagen incrustada: configura FREEPIK_API_KEY o revisa el término.)");
+  }
   lines.push("");
 
   if (params.extraResources.length) {
@@ -229,41 +251,202 @@ function buildInteractivityLines(unit: CourseUnit): string[] {
   return lines.length ? lines : ["Sin interactividad declarada (agrega instrucciones para estudiantes)."];
 }
 
-function addStoryboardCover(pptx: PptxGenJS, output: InstructionalDesignOutput) {
+const STORY = {
+  bg: "F1F5F9",
+  ink: "0F172A",
+  muted: "334155",
+  card: "FFFFFF",
+  soft: "E2E8F0",
+  accent: COLOR.accent,
+  accent2: "0EA5E9"
+} as const;
+
+function truncateText(text: string, maxChars: number): string {
+  const cleaned = safeLine(text);
+  if (cleaned.length <= maxChars) return cleaned;
+  return `${cleaned.slice(0, Math.max(0, maxChars - 3)).trim()}...`;
+}
+
+function clampLines(lines: string[], maxLines: number, maxLineChars: number): string[] {
+  const cleaned = lines.map(safeLine).filter(Boolean).map((line) => truncateText(line, maxLineChars));
+  if (cleaned.length <= maxLines) return cleaned;
+  return [...cleaned.slice(0, maxLines - 1), `(+${cleaned.length - (maxLines - 1)} más)`];
+}
+
+function addStoryBackground(slide: PptxGenJS.Slide) {
+  slide.addShape("rect", { x: 0, y: 0, w: 13.33, h: 7.5, fill: { color: STORY.bg } });
+  slide.addShape("ellipse", {
+    x: -1.1,
+    y: -0.7,
+    w: 3.0,
+    h: 3.0,
+    fill: { color: STORY.accent2, transparency: 85 },
+    line: { color: STORY.accent2, transparency: 100 }
+  });
+  slide.addShape("ellipse", {
+    x: 11.4,
+    y: 5.6,
+    w: 3.2,
+    h: 3.2,
+    fill: { color: STORY.accent, transparency: 88 },
+    line: { color: STORY.accent, transparency: 100 }
+  });
+}
+
+function addStoryTopBar(slide: PptxGenJS.Slide, params: { left: string; right?: string }) {
+  slide.addShape("rect", { x: 0, y: 0, w: 13.33, h: 0.6, fill: { color: STORY.ink } });
+  slide.addText(truncateText(params.left, 90), {
+    x: 0.7,
+    y: 0.15,
+    w: 9.5,
+    h: 0.3,
+    fontFace: "Calibri",
+    fontSize: 12,
+    color: STORY.card
+  });
+  if (params.right?.trim()) {
+    slide.addShape("roundRect", {
+      x: 11.1,
+      y: 0.13,
+      w: 1.95,
+      h: 0.34,
+      fill: { color: STORY.accent }
+    });
+    slide.addText(truncateText(params.right, 18), {
+      x: 11.1,
+      y: 0.15,
+      w: 1.95,
+      h: 0.3,
+      align: "center",
+      valign: "middle",
+      fontFace: "Calibri",
+      fontSize: 11,
+      bold: true,
+      color: STORY.card
+    });
+  }
+}
+
+function addStoryFooterNav(slide: PptxGenJS.Slide) {
+  const y = 6.92;
+  const btn = (x: number, label: string) => {
+    slide.addShape("roundRect", {
+      x,
+      y,
+      w: 1.6,
+      h: 0.42,
+      fill: { color: STORY.card },
+      line: { color: STORY.soft, width: 1 }
+    });
+    slide.addText(label, {
+      x,
+      y: y + 0.03,
+      w: 1.6,
+      h: 0.36,
+      align: "center",
+      valign: "middle",
+      fontFace: "Calibri",
+      fontSize: 11,
+      color: STORY.muted
+    });
+  };
+  btn(0.7, "Menu");
+  btn(2.45, "Atras");
+  btn(4.2, "Siguiente");
+}
+
+function addStoryboardCover(pptx: PptxGenJS, output: InstructionalDesignOutput, visual: ResolvedVisual | null) {
   const slide = pptx.addSlide();
-  addHeader(slide, output.project.title, "Guion técnico instruccional (Storyboard OVA)");
+  addStoryBackground(slide);
+  addStoryTopBar(slide, { left: output.project.title, right: "PORTADA" });
+
+  if (visual?.imagePath) {
+    slide.addShape("roundRect", {
+      x: 7.15,
+      y: 0.75,
+      w: 5.48,
+      h: 6.05,
+      fill: { color: STORY.card },
+      line: { color: STORY.soft, width: 1 }
+    });
+    slide.addImage({
+      path: visual.imagePath,
+      x: 7.2,
+      y: 0.8,
+      w: 5.38,
+      h: 5.95,
+      sizing: { type: "cover", w: 5.38, h: 5.95 }
+    });
+  } else {
+    slide.addShape("roundRect", {
+      x: 7.15,
+      y: 0.75,
+      w: 5.48,
+      h: 6.05,
+      fill: { color: STORY.soft },
+      line: { color: STORY.soft, width: 1 }
+    });
+  }
 
   slide.addShape("roundRect", {
-    x: 4.9,
-    y: 3.2,
-    w: 3.6,
-    h: 0.9,
-    fill: { color: COLOR.white },
-    line: { color: COLOR.border, width: 1 }
+    x: 0.7,
+    y: 0.95,
+    w: 6.25,
+    h: 3.3,
+    fill: { color: STORY.card },
+    line: { color: STORY.soft, width: 1 }
+  });
+
+  slide.addText("Guion tecnico instruccional", {
+    x: 1.0,
+    y: 1.15,
+    w: 5.7,
+    h: 0.4,
+    fontFace: "Calibri",
+    fontSize: 26,
+    bold: true,
+    color: STORY.ink
+  });
+  slide.addText("Storyboard OVA listo para produccion (formato PPTX)", {
+    x: 1.0,
+    y: 1.6,
+    w: 5.7,
+    h: 0.35,
+    fontFace: "Calibri",
+    fontSize: 12,
+    color: STORY.muted
+  });
+
+  slide.addShape("roundRect", {
+    x: 1.0,
+    y: 2.25,
+    w: 3.2,
+    h: 0.8,
+    fill: { color: STORY.accent }
   });
   slide.addText("Iniciar", {
-    x: 4.9,
-    y: 3.28,
-    w: 3.6,
-    h: 0.9,
+    x: 1.0,
+    y: 2.32,
+    w: 3.2,
+    h: 0.65,
     align: "center",
     valign: "middle",
     fontFace: "Calibri",
     fontSize: 20,
     bold: true,
-    color: COLOR.accent
+    color: STORY.card
   });
 
   slide.addText(
-    "Este PPTX es un guion técnico para producción. El texto visible corresponde al estudiante; el audio y notas de construcción van en Notas del orador.",
+    "Texto visible: estudiante. Guion de audio + notas de construccion: Notas del orador. Mantener poco texto por pantalla y priorizar elementos visuales.",
     {
-      x: 0.9,
-      y: 5.9,
-      w: 11.6,
-      h: 1.0,
+      x: 0.75,
+      y: 4.55,
+      w: 11.9,
+      h: 1.1,
       fontFace: "Calibri",
-      fontSize: 12,
-      color: COLOR.slate700
+      fontSize: 11,
+      color: STORY.muted
     }
   );
 
@@ -272,46 +455,116 @@ function addStoryboardCover(pptx: PptxGenJS, output: InstructionalDesignOutput) 
       `Curso: ${safeLine(output.project.title)}`,
       "",
       "NOTAS DE CONSTRUCCION:",
-      "- Botón 'Iniciar': navegar a la pantalla de Contenido/Menú.",
-      "- Mantener estilo y navegación consistente en todas las pantallas (Menú/Atrás).",
+      "- Boton 'Iniciar': navegar a la pantalla de Contenido/MENU.",
+      "- Mantener estilo y navegacion consistente en todas las pantallas (Menu/Atras/Siguiente).",
       "",
       "GUION DE AUDIO:",
-      "Bienvenido/a. En este recurso recorrerás el contenido de forma guiada. Usa el menú para avanzar por las secciones y realiza las actividades para consolidar tu aprendizaje."
+      "Bienvenido/a. En este recurso recorreremos el contenido de forma guiada. Usa el menu para avanzar por las secciones y realiza las actividades para consolidar tu aprendizaje.",
+      "",
+      ...(visual?.attributionLines?.length ? ["VISUAL / IMAGEN:", ...visual.attributionLines] : [])
     ].join("\n")
   );
 }
 
-function addStoryboardMenu(pptx: PptxGenJS, output: InstructionalDesignOutput) {
+function addStoryboardMenu(pptx: PptxGenJS, output: InstructionalDesignOutput, visual: ResolvedVisual | null) {
   const slide = pptx.addSlide();
-  addHeader(slide, "Contenido", "Haz clic en cada botón para acceder a la información");
+  addStoryBackground(slide);
+  addStoryTopBar(slide, { left: output.project.title, right: "MENU" });
+
+  slide.addShape("roundRect", {
+    x: 0.7,
+    y: 0.85,
+    w: 6.25,
+    h: 5.8,
+    fill: { color: STORY.card },
+    line: { color: STORY.soft, width: 1 }
+  });
+
+  slide.addText("Contenido", {
+    x: 1.0,
+    y: 1.05,
+    w: 5.7,
+    h: 0.4,
+    fontFace: "Calibri",
+    fontSize: 22,
+    bold: true,
+    color: STORY.ink
+  });
+  slide.addText("Haz clic en cada boton para acceder a la pantalla.", {
+    x: 1.0,
+    y: 1.45,
+    w: 5.7,
+    h: 0.3,
+    fontFace: "Calibri",
+    fontSize: 11,
+    color: STORY.muted
+  });
 
   const items = output.course_structure.map((unit) => `${unit.unit_id}. ${unit.title}`);
-  addPanel(slide, {
-    title: "Pantallas",
-    body: bulletLines(items, 18),
-    x: 0.9,
-    y: 1.4,
-    w: 11.55,
-    h: 5.6,
+  slide.addText(bulletLines(items, 18), {
+    x: 1.0,
+    y: 1.85,
+    w: 5.8,
+    h: 4.55,
+    fontFace: "Calibri",
+    fontSize: 13,
+    color: STORY.ink,
+    valign: "top",
     bullet: true
   });
+
+  // Visual panel (right)
+  if (visual?.imagePath) {
+    slide.addShape("roundRect", {
+      x: 7.15,
+      y: 0.85,
+      w: 5.48,
+      h: 5.8,
+      fill: { color: STORY.card },
+      line: { color: STORY.soft, width: 1 }
+    });
+    slide.addImage({
+      path: visual.imagePath,
+      x: 7.2,
+      y: 0.9,
+      w: 5.38,
+      h: 5.7,
+      sizing: { type: "cover", w: 5.38, h: 5.7 }
+    });
+  } else {
+    slide.addShape("roundRect", {
+      x: 7.15,
+      y: 0.85,
+      w: 5.48,
+      h: 5.8,
+      fill: { color: STORY.soft },
+      line: { color: STORY.soft, width: 1 }
+    });
+  }
+
+  addStoryFooterNav(slide);
 
   slide.addNotes(
     [
       `Curso: ${safeLine(output.project.title)}`,
       "",
       "NOTAS DE CONSTRUCCION:",
-      "- Construir un menú con botones a cada pantalla (unit_id).",
-      "- Agregar botón 'Anterior' y botón 'Menú' persistentes.",
-      "- Al visitar una pantalla, marcar el botón correspondiente con un check/estado para orientar la navegación.",
+      "- Construir un menu con botones a cada pantalla (unit_id).",
+      "- Agregar boton 'Atras' y boton 'Menu' persistentes.",
+      "- Al visitar una pantalla, marcar el boton correspondiente con un check/estado para orientar la navegacion.",
       "",
       "GUION DE AUDIO:",
-      "Selecciona una sección del menú para iniciar. Puedes regresar al menú en cualquier momento para retomar otra pantalla."
+      "Selecciona una seccion del menu para iniciar. Puedes regresar al menu en cualquier momento para retomar otra pantalla.",
+      "",
+      ...(visual?.attributionLines?.length ? ["VISUAL / IMAGEN:", ...visual.attributionLines] : [])
     ].join("\n")
   );
 }
 
-async function toPptxBufferStoryboard(output: InstructionalDesignOutput): Promise<Buffer> {
+async function toPptxBufferStoryboard(
+  output: InstructionalDesignOutput,
+  options?: { courseName?: string }
+): Promise<Buffer> {
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
   pptx.author = "Instructional Design Designer AI";
@@ -319,60 +572,208 @@ async function toPptxBufferStoryboard(output: InstructionalDesignOutput): Promis
   pptx.subject = "Guion técnico instruccional (Storyboard OVA)";
   pptx.title = safeLine(output.project.title);
 
-  addStoryboardCover(pptx, output);
-  addStoryboardMenu(pptx, output);
+  const courseName = options?.courseName?.trim().length ? options.courseName.trim() : output.project.title;
+  const coverQuery = `${courseName} educacion digital ilustracion`;
+  const coverVisual = await resolveFreepikVisual({ courseName, term: coverQuery, preferHorizontal: true });
+
+  addStoryboardCover(pptx, output, coverVisual);
+  addStoryboardMenu(pptx, output, coverVisual);
 
   for (const unit of output.course_structure) {
     const audioScript = pickResourceByType(unit, "guion_audio");
     const build = pickResourceByType(unit, "notas_construccion");
+    const visualQuery =
+      pickResourceByType(unit, "imagen_query")?.trim() || `${unit.title} ilustracion plana`;
+    const visual = await resolveFreepikVisual({ courseName, term: visualQuery, preferHorizontal: true });
     const resources = otherResources(unit).map(formatResource);
     const interactivity = buildInteractivityLines(unit);
 
-    const contentChunks = chunk(unit.content_outline, 14);
-    for (let idx = 0; idx < contentChunks.length; idx += 1) {
-      const slide = pptx.addSlide();
-      const partLabel = contentChunks.length > 1 ? ` (parte ${idx + 1}/${contentChunks.length})` : "";
-      addHeader(slide, `${unit.unit_id} — ${unit.title}${partLabel}`, `Duración: ${unit.duration_minutes} min`);
+    const slide = pptx.addSlide();
+    addStoryBackground(slide);
+    addStoryTopBar(slide, { left: `${unit.unit_id} - ${unit.title}`, right: unit.unit_id });
 
-      addPanel(slide, {
-        title: "Texto en pantalla (estudiante)",
-        body: bulletLines(contentChunks[idx]),
-        x: 0.9,
-        y: 1.25,
-        w: 7.55,
-        h: 5.85,
-        bullet: false
-      });
+    // Left content card
+    slide.addShape("roundRect", {
+      x: 0.7,
+      y: 0.75,
+      w: 6.3,
+      h: 5.85,
+      fill: { color: STORY.card },
+      line: { color: STORY.soft, width: 1 }
+    });
 
-      addPanel(slide, {
-        title: "Interactividad (estudiante)",
-        body: bulletLines(interactivity, 10),
-        x: 8.65,
-        y: 1.25,
-        w: 3.8,
-        h: 2.55,
-        bullet: true
-      });
+    slide.addText(truncateText(unit.title, 60), {
+      x: 1.0,
+      y: 0.95,
+      w: 5.8,
+      h: 0.35,
+      fontFace: "Calibri",
+      fontSize: 20,
+      bold: true,
+      color: STORY.ink
+    });
 
-      addPanel(slide, {
-        title: "Recursos (placeholders)",
-        body: bulletLines(resources, 8),
-        x: 8.65,
-        y: 3.9,
-        w: 3.8,
-        h: 3.2,
-        bullet: true
-      });
+    slide.addText(truncateText(unit.purpose, 140), {
+      x: 1.0,
+      y: 1.32,
+      w: 5.8,
+      h: 0.45,
+      fontFace: "Calibri",
+      fontSize: 11,
+      color: STORY.muted
+    });
 
-      const notes = buildNotes({
-        courseTitle: output.project.title,
-        unit,
-        audioScript,
-        buildNotes: build,
-        extraResources: resources
+    slide.addText("En pantalla (estudiante)", {
+      x: 1.0,
+      y: 1.75,
+      w: 5.8,
+      h: 0.25,
+      fontFace: "Calibri",
+      fontSize: 12,
+      bold: true,
+      color: STORY.accent
+    });
+
+    const studentLines = clampLines(unit.content_outline, 6, 95);
+    slide.addText(studentLines.join("\n"), {
+      x: 1.0,
+      y: 2.05,
+      w: 5.8,
+      h: 2.75,
+      fontFace: "Calibri",
+      fontSize: 16,
+      color: STORY.ink,
+      valign: "top",
+      bullet: true
+    });
+
+    // Interactivity card
+    slide.addShape("roundRect", {
+      x: 1.0,
+      y: 4.95,
+      w: 5.8,
+      h: 1.55,
+      fill: { color: "ECFEFF" },
+      line: { color: "A5F3FC", width: 1 }
+    });
+    slide.addText("Interactividad", {
+      x: 1.2,
+      y: 5.08,
+      w: 5.4,
+      h: 0.25,
+      fontFace: "Calibri",
+      fontSize: 12,
+      bold: true,
+      color: STORY.ink
+    });
+    const interLines = clampLines(interactivity, 4, 110);
+    slide.addText(interLines.join("\n"), {
+      x: 1.2,
+      y: 5.35,
+      w: 5.4,
+      h: 1.1,
+      fontFace: "Calibri",
+      fontSize: 11,
+      color: STORY.muted,
+      valign: "top",
+      bullet: true
+    });
+
+    // Right visual card
+    slide.addShape("roundRect", {
+      x: 7.15,
+      y: 0.75,
+      w: 5.48,
+      h: 5.85,
+      fill: { color: STORY.card },
+      line: { color: STORY.soft, width: 1 }
+    });
+    if (visual?.imagePath) {
+      slide.addImage({
+        path: visual.imagePath,
+        x: 7.2,
+        y: 0.8,
+        w: 5.38,
+        h: 5.75,
+        sizing: { type: "cover", w: 5.38, h: 5.75 }
       });
-      slide.addNotes(notes);
+    } else {
+      slide.addShape("rect", {
+        x: 7.2,
+        y: 0.8,
+        w: 5.38,
+        h: 5.75,
+        fill: { color: STORY.soft }
+      });
+      slide.addShape("ellipse", {
+        x: 9.1,
+        y: 2.1,
+        w: 1.9,
+        h: 1.9,
+        fill: { color: STORY.accent2, transparency: 80 },
+        line: { color: STORY.accent2, transparency: 100 }
+      });
+      slide.addShape("ellipse", {
+        x: 8.1,
+        y: 3.4,
+        w: 2.6,
+        h: 2.6,
+        fill: { color: STORY.accent, transparency: 88 },
+        line: { color: STORY.accent, transparency: 100 }
+      });
     }
+
+    // Footer: navigation + resource chips
+    addStoryFooterNav(slide);
+    const chipSources = otherResources(unit).slice(0, 3).map((res) => safeLine(res.type || "recurso"));
+    slide.addText("Recursos:", {
+      x: 6.05,
+      y: 6.98,
+      w: 1.0,
+      h: 0.3,
+      fontFace: "Calibri",
+      fontSize: 10,
+      color: STORY.muted
+    });
+    let chipX = 6.95;
+    for (const chip of chipSources) {
+      const label = truncateText(chip, 14);
+      slide.addShape("roundRect", {
+        x: chipX,
+        y: 6.92,
+        w: 1.55,
+        h: 0.42,
+        fill: { color: "E0F2FE" },
+        line: { color: "BAE6FD", width: 1 }
+      });
+      slide.addText(label, {
+        x: chipX,
+        y: 6.95,
+        w: 1.55,
+        h: 0.36,
+        align: "center",
+        valign: "middle",
+        fontFace: "Calibri",
+        fontSize: 10,
+        bold: true,
+        color: STORY.ink
+      });
+      chipX += 1.65;
+      if (chipX > 12.3) break;
+    }
+
+    const notes = buildNotes({
+      courseTitle: output.project.title,
+      unit,
+      audioScript,
+      buildNotes: build,
+      studentText: unit.content_outline,
+      interactivity,
+      visualQuery,
+      visualAttribution: visual?.attributionLines ?? [],
+      extraResources: resources
+    });
+    slide.addNotes(notes);
   }
 
   return toNodeBuffer(pptx);
@@ -554,11 +955,11 @@ async function toPptxBufferOverview(output: InstructionalDesignOutput): Promise<
 
 export async function toPptxBuffer(
   output: InstructionalDesignOutput,
-  options?: { mode?: string }
+  options?: { mode?: string; courseName?: string }
 ): Promise<Buffer> {
   const mode = (options?.mode ?? "full") as string;
   if (mode === "ova-storyboard") {
-    return toPptxBufferStoryboard(output);
+    return toPptxBufferStoryboard(output, { courseName: options?.courseName });
   }
   return toPptxBufferOverview(output);
 }

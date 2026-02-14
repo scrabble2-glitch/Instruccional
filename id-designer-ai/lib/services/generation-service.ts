@@ -88,12 +88,18 @@ function storyboardCompletenessIssues(output: InstructionalDesignOutput): string
     const build = unit.resources.find(
       (resource) => normalizeKey(resource.type) === "notas_construccion" && resource.title.trim().length >= 50
     );
+    const imageQuery = unit.resources.find(
+      (resource) => normalizeKey(resource.type) === "imagen_query" && resource.title.trim().length >= 8
+    );
 
     if (!audio) {
       issues.push(`${unit.unit_id}: falta resource type "guion_audio" (guion completo de narración).`);
     }
     if (!build) {
       issues.push(`${unit.unit_id}: falta resource type "notas_construccion" (instrucciones de construcción).`);
+    }
+    if (!imageQuery) {
+      issues.push(`${unit.unit_id}: falta resource type "imagen_query" (término de búsqueda para visual).`);
     }
   }
 
@@ -205,7 +211,7 @@ function buildCacheKey(request: GenerateRequest, context: BuildContextResult, mo
     editInstruction: request.requestType === "refine" ? request.editInstruction : undefined,
     targetSection: request.requestType === "refine" ? request.targetSection : undefined,
     previousJson: context.previousJson,
-    promptVersion: "2026-02-13"
+    promptVersion: "2026-02-14"
   };
 
   return sha256(JSON.stringify(payload));

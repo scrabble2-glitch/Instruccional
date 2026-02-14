@@ -79,12 +79,14 @@ Instrucciones de guardrail:
   - La presentación debe quedar lista para producción: texto en pantalla + interactividad + guion de audio + notas de construcción.
   - Usa estos campos por pantalla:
     - content_outline: SOLO texto visible para estudiantes (títulos, bullets, mensajes, copy). No incluyas aquí notas de construcción.
+      Reglas de estilo: máximo 6 bullets; evita párrafos largos; si el material base es extenso, divide en pantallas consecutivas.
     - learning_activities: describe la interactividad como instrucciones para estudiantes (qué hacer y qué ocurre: botones, check de navegación, pop-ups, drag and drop, preguntas, feedback).
     - assessment: usa para checks de aprendizaje (preguntas, ejercicios evaluables) con evidencia y rúbrica simple.
     - resources: incluye placeholders de recursos multimedia (iconos/imagenes/infografías/video). NO inventes links reales.
-      Además, agrega obligatoriamente 2 recursos especiales por pantalla (sin links reales):
+      Además, agrega obligatoriamente 3 recursos especiales por pantalla (sin links reales):
       1) { type: "guion_audio", title: "<guion completo de narración para esa pantalla>", link_optional: "" }
       2) { type: "notas_construccion", title: "<instrucciones de construcción (capas, botones, estados, triggers, navegación) + textos emergentes si aplica>", link_optional: "" }
+      3) { type: "imagen_query", title: "<término de búsqueda para Freepik (3-8 palabras) + estilo visual sugerido (ej. 'ilustración plana', 'foto realista')>", link_optional: "" }
   - El guion de audio debe ser natural, profesional y coherente con el texto en pantalla.
   - En keep_all: no omitas contenido; distribúyelo en pantallas sin perder el orden general.
 ${strategyGuidance}
@@ -123,10 +125,12 @@ Objetivo:
 Reglas:
 1) Devuelve solo JSON válido, sin texto adicional.
 2) Mantén exactamente el mismo schema.
-3) Para cada item en course_structure, asegúrate de incluir 2 recursos especiales:
+3) Para cada item en course_structure, asegúrate de incluir recursos especiales:
    - { type: "guion_audio", title: "<guion completo de narración para esa pantalla>", link_optional: "" }
    - { type: "notas_construccion", title: "<instrucciones de construcción + textos emergentes si aplica>", link_optional: "" }
-4) No inventes links reales.
+4) Además, incluye un recurso:
+   - { type: "imagen_query", title: "<término de búsqueda para Freepik (3-8 palabras) + estilo visual>", link_optional: "" }
+5) No inventes links reales.
 
 Issues detectados:
 ${issuesText}

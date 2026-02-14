@@ -83,7 +83,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
   }
 
   if (format === "pptx") {
-    const buffer = await toPptxBuffer(output, { mode: generationParams.mode });
+    const buffer = await toPptxBuffer(output, { mode: generationParams.mode, courseName: version.project.name });
 
     // Best-effort: store a copy in the local course folder, if configured.
     try {

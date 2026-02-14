@@ -31,6 +31,7 @@ Aplicación web profesional para generar diseño instruccional con IA (Gemini AP
 - Edición guiada por instrucción para regenerar secciones específicas
 - Exportación JSON, Markdown y PPTX (descarga)
 - Al finalizar la generación en streaming, se intenta descargar automáticamente el PPTX
+- En exportación PPTX (Storyboard OVA): composición tipo Genially (tarjetas, jerarquía visual) e inclusión de imágenes reales via Freepik API (opcional)
 - Rate limiting por IP (default 20 req/min)
 - Caching por hash de brief+parámetros
 - Estimación de tokens/costo por request
@@ -128,6 +129,8 @@ Referencia completa en `.env.example`.
 - `CACHE_TTL_MINUTES`: TTL del cache
 - `RATE_LIMIT_PER_MINUTE`: límite por IP
 - `INPUT_TOKEN_COST_PER_MILLION` / `OUTPUT_TOKEN_COST_PER_MILLION`: costos aproximados
+- `FREEPIK_API_KEY`: (opcional) API key de Freepik para incrustar imágenes reales en el PPTX (solo server)
+- `FREEPIK_API_BASE_URL`: (opcional) base URL de Freepik API (default `https://api.freepik.com`)
 - `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`: credenciales Cloudflare R2 (solo server)
 - `R2_BUCKET`: bucket de R2
 - `R2_PREFIX_BASE`: prefijo base para “carpetas” por curso (default `cursos/`)
@@ -221,6 +224,16 @@ Si configuras `R2_*`, en cada generación de un **nuevo curso** se asegura la ex
 - Objeto marcador: `.keep`
 
 Esto evita colisiones entre nombres similares y mantiene el almacenamiento organizado por curso.
+
+## Freepik (opcional)
+
+Si configuras `FREEPIK_API_KEY`, el exportador PPTX del modo **Storyboard OVA** intentará:
+
+- Generar una imagen por pantalla (unidad) descargándola desde el catálogo de Freepik (vía API oficial).
+- Guardar/cachar las imágenes en `LOCAL_COURSE_ROOT_DIR/<curso>/assets/` cuando esté configurado.
+- Registrar en las Notas del orador la atribución (título/fuente/licencia si está disponible).
+
+Si no está configurado, se usa un placeholder visual (formas) para no dejar la diapositiva "solo texto".
 
 ## Carpetas locales por curso (opcional)
 
