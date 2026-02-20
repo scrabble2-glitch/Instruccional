@@ -53,7 +53,7 @@ describe("POST /api/generate/stream", () => {
         estimatedCostUsd: 0.000333,
         fromCache: false,
         cacheKey: "stream_cache_key",
-        model: "gemini-2.5-flash"
+        model: "gemini-3-pro"
       };
     });
   });
@@ -79,7 +79,7 @@ describe("POST /api/generate/stream", () => {
           }
         },
         options: {
-          model: "gemini-2.5-flash",
+          model: "gemini-3-pro",
           safetyMode: "normal",
           template: "general",
           mode: "ova-storyboard"

@@ -80,6 +80,25 @@ function normalizeKey(value: string): string {
     .trim();
 }
 
+function resolvePreferredModel(requestedModel?: string): string {
+  const requested = requestedModel?.trim();
+  const fromEnv = env.GEMINI_MODEL?.trim();
+  const base = requested?.length ? requested : fromEnv?.length ? fromEnv : "gemini-2.5-pro";
+  const normalized = normalizeKey(base);
+
+  if (normalized === "gemini-3" || normalized === "gemini3" || normalized === "gemini-3-pro") {
+    // Keep a stable non-Flash default optimized for quality.
+    return "gemini-2.5-pro";
+  }
+
+  // Prevent regressions to Flash unless the user changes this behavior explicitly in code.
+  if (normalized.includes("flash")) {
+    return "gemini-2.5-pro";
+  }
+
+  return base;
+}
+
 function storyboardCompletenessIssues(output: InstructionalDesignOutput): string[] {
   const issues: string[] = [];
 
@@ -94,6 +113,22 @@ function storyboardCompletenessIssues(output: InstructionalDesignOutput): string
     const visualSpec = unit.resources.find(
       (resource) => normalizeKey(resource.type) === "visual_spec" && resource.title.trim().length >= 40
     );
+    const infographicTech = unit.resources.find(
+      (resource) => {
+        const normalizedTitle = normalizeKey(resource.title);
+        const hasCoreFields =
+          normalizedTitle.includes("tema") &&
+          (normalizedTitle.includes("requiere_infografia") || normalizedTitle.includes("requiere infografia")) &&
+          (normalizedTitle.includes("estructura de datos") || normalizedTitle.includes("estructura_datos")) &&
+          (normalizedTitle.includes("metafora visual") || normalizedTitle.includes("metafora_visual"));
+        return (
+          normalizeKey(resource.type) === "infografia_tecnica" &&
+          resource.title.trim().length >= 50 &&
+          hasCoreFields &&
+          (normalizedTitle.includes("mermaid") || normalizedTitle.includes("codigo_mermaid"))
+        );
+      }
+    );
 
     if (!audio) {
       issues.push(`${unit.unit_id}: falta resource type "guion_audio" (guion completo de narración).`);
@@ -106,6 +141,11 @@ function storyboardCompletenessIssues(output: InstructionalDesignOutput): string
     }
     if (!visualSpec) {
       issues.push(`${unit.unit_id}: falta resource type "visual_spec" (especificación visual para infografía/UI).`);
+    }
+    if (!infographicTech) {
+      issues.push(
+        `${unit.unit_id}: falta resource type "infografia_tecnica" (estructura de datos, metáfora visual, Mermaid, paleta y estilo).`
+      );
     }
   }
 
@@ -139,7 +179,7 @@ async function generateStrictJson(params: {
     };
   }
 
-  params.hooks?.onStage?.("model_repair", "JSON inválido detectado. Ejecutando reparación automática.");
+  params.hooks?.onStage?.("model_repair", "Normalizando salida de IA para garantizar estructura válida.");
   const repairPrompt = buildRepairPrompt(first.rawText, summarizeZodError(parsed.error));
   const repair = await callGeminiGenerateContent({
     model: params.model,
@@ -217,7 +257,7 @@ function buildCacheKey(request: GenerateRequest, context: BuildContextResult, mo
     editInstruction: request.requestType === "refine" ? request.editInstruction : undefined,
     targetSection: request.requestType === "refine" ? request.targetSection : undefined,
     previousJson: context.previousJson,
-    promptVersion: "2026-02-14-visual2"
+    promptVersion: "2026-02-17-stability-v2"
   };
 
   return sha256(JSON.stringify(payload));
@@ -267,7 +307,7 @@ export async function generateAndStoreVersion(
 ): Promise<GenerateAndStoreResult> {
   await ensureDatabaseReady();
 
-  const model = request.options.model ?? env.GEMINI_MODEL;
+  const model = resolvePreferredModel(request.options.model);
   const safetyMode = request.options.safetyMode;
 
   if (request.requestType === "new") {
@@ -408,7 +448,9 @@ export async function generateAndStoreVersion(
         : response.project.duration_hours || context.projectRecord?.durationHours || 0;
 
     hooks?.onStage?.("quality_check", "Ejecutando validaciones internas de calidad.");
-    qualityReport = evaluateInstructionalQuality(response, expectedDurationHours);
+    qualityReport = evaluateInstructionalQuality(response, expectedDurationHours, {
+      mode: request.options.mode
+    });
 
     await upsertCacheEntry({
       key: cacheKey,

@@ -47,8 +47,8 @@ export function buildUserPrompt(request: GenerateRequest, previousJson?: unknown
     const strategy = project.baseMaterialStrategy ?? "analyze_storyboard";
     const strategyGuidance =
       strategy === "keep_all"
-        ? `\nReglas adicionales por estrategia (keep_all):\n- Debes conservar TODO el contenido del material base (ideas, títulos, listas, numeraciones y ejemplos). No omitas nada.\n- Puedes resegmentar y reescribir para guionizar, pero cada fragmento del material debe estar representado en el storyboard.\n- Respeta el orden general del material base. Si reordenas por claridad, justifica el cambio en production_notes.risks.\n- No inventes contenido que no esté en el material base (salvo conectores mínimos, instrucciones de interacción y notas de producción).\n`
-        : `\nReglas adicionales por estrategia (analyze_storyboard):\n- Analiza el material base, identifica temas y propone una secuencia didáctica (storyboard) clara y accionable.\n- Puedes reorganizar, agrupar y sintetizar; evita copiar literal si no es necesario.\n- No inventes datos, citas o fuentes. Si falta información, registra preguntas en production_notes.risks.\n`;
+      ? `\nReglas adicionales por estrategia (keep_all):\n- Debes conservar TODO el contenido del material base (ideas, títulos, listas, numeraciones y ejemplos). No omitas nada.\n- Puedes resegmentar y reescribir para guionizar, pero cada fragmento del material debe estar representado en el storyboard.\n- Respeta el orden general del material base. Si reordenas por claridad, justifica el cambio en production_notes.risks.\n- No inventes contenido que no esté en el material base (salvo conectores mínimos, instrucciones de interacción y notas de producción).\n`
+      : `\nReglas adicionales por estrategia (analyze_storyboard):\n- Analiza el material base, identifica temas y propone una secuencia didáctica (storyboard) clara y accionable.\n- Puedes reorganizar, agrupar y sintetizar; evita copiar literal si no es necesario.\n- No inventes datos, citas o fuentes. Si falta información, registra preguntas en production_notes.risks.\n`;
 
     return `Genera un diseño instruccional con estas entradas:
 - Tipo de plantilla: ${templateLabel(options.template)}
@@ -88,11 +88,13 @@ Instrucciones de guardrail:
       Además, agrega obligatoriamente 4 recursos especiales por pantalla (sin links reales):
       1) { type: "guion_audio", title: "<guion completo de narración para esa pantalla>", link_optional: "" }
       2) { type: "notas_construccion", title: "<instrucciones de construcción (capas, botones, estados, triggers, navegación) + textos emergentes si aplica>", link_optional: "" }
-      3) { type: "imagen_query", title: "<término de búsqueda para banco de imágenes (3-8 palabras) + estilo visual sugerido (ej. 'ilustración plana', 'foto realista')>", link_optional: "" }
+      3) { type: "imagen_query", title: "<término de búsqueda para banco de imágenes (3-8 palabras) + estilo visual sugerido (ej. 'ilustración plana', 'foto realista', 'vector estilo freepik')>", link_optional: "" }
       4) { type: "visual_spec", title: "<especificación visual de la infografía y componentes UI en formato texto>", link_optional: "" }
+      5) { type: "infografia_tecnica", title: "<especificación técnica de infografía (estructura de datos, metáfora visual, mermaid, paleta y estilo)>", link_optional: "" }
 
       Formato requerido para "visual_spec" (texto, NO JSON), ejemplo:
       layout: process_steps
+      visual_mode: infographic
       items:
       - Paso 1 | Título corto | Texto muy breve (<= 120 caracteres)
       - Paso 2 | Título corto | Texto muy breve
@@ -104,11 +106,39 @@ Instrucciones de guardrail:
 
       Reglas "visual_spec":
       - layout permitido: process_steps | cards | timeline | bullets
+      - visual_mode permitido: auto | infographic | image_support | comparison | activity
       - items: 2 a 5 elementos (título y texto breve). Deben corresponder al contenido de la pantalla.
       - buttons: 0 a 4 botones (labels) visibles en pantalla (hotspots).
       - popups: si defines buttons, define también popups (1 por botón) con el texto emergente que verá el estudiante.
       - No incluyas links.
       - Piensa en estilo "Genially": poco texto, jerarquía visual, tarjetas, íconos, y acciones claras (botones + popups).
+      - NO uses solo infografías para todo. Elige visual_mode según tema y extensión:
+        - image_support: temas introductorios o narrativos
+        - comparison: cuando hay contraste/diferencias/ventajas
+        - activity: cuando predomina instrucción de práctica
+        - infographic: solo cuando el tema realmente requiere esquema visual estructurado
+
+      Formato requerido para "infografia_tecnica" (texto, NO JSON):
+      tema: <tema que amerita representación gráfica>
+      requiere_infografia: si|no
+      estructura_datos:
+      - Nivel 1 > Nivel 2 > Concepto clave
+      - ...
+      metafora_visual: <metáfora sugerida: engranaje, montaña, ruta, etc.>
+      codigo_mermaid: <código Mermaid en texto plano, sin backticks. Ej: flowchart LR; A["Nodo 1"] --> B["Nodo 2"]>
+      paleta_colores:
+      - #0B7285
+      - #0EA5E9
+      - #F8FAFC
+      estilo_iconografia: <flat|lineal|duotono|3D suave>
+
+      Reglas "infografia_tecnica":
+      - Para la pantalla que determine que necesita gráfica, marca requiere_infografia: si.
+      - Para pantallas que NO requieren gráfica estructurada, marca requiere_infografia: no.
+      - Entrega código Mermaid legible y profesional (nodos con textos cortos y claros).
+      - Si no aplica infografía, puedes dejar codigo_mermaid en una línea simple (ej: flowchart LR; A["No aplica"]).
+      - No incluyas enlaces externos ni menciones APIs.
+      - Si el tema es ambiguo, agrega en production_notes.risks una sugerencia que inicie con "NOTEBOOKLM:" para análisis complementario.
   - El guion de audio debe ser natural, profesional y coherente con el texto en pantalla.
   - En keep_all: no omitas contenido; distribúyelo en pantallas sin perder el orden general.
 ${strategyGuidance}
@@ -153,9 +183,22 @@ Reglas:
 4) Además, incluye un recurso:
    - { type: "imagen_query", title: "<término de búsqueda para banco de imágenes (3-8 palabras) + estilo visual>", link_optional: "" }
 5) Además, incluye un recurso:
-   - { type: "visual_spec", title: "<layout + items + buttons + popups (formato texto; NO JSON)>", link_optional: "" }
+   - { type: "visual_spec", title: "<layout + visual_mode + items + buttons + popups (formato texto; NO JSON)>", link_optional: "" }
    - Si defines buttons en visual_spec, define popups (1 por botón) con el texto emergente.
-6) No inventes links reales.
+6) Además, incluye un recurso:
+   - { type: "infografia_tecnica", title: "<tema + requiere_infografia + estructura_datos + metafora_visual + codigo_mermaid + paleta_colores + estilo_iconografia>", link_optional: "" }
+7) No inventes links reales.
+8) Formato mínimo de infografia_tecnica (texto):
+   tema: ...
+   requiere_infografia: si|no
+   estructura_datos:
+   - ...
+   metafora_visual: ...
+   codigo_mermaid: flowchart LR; A["..."] --> B["..."]
+   paleta_colores:
+   - #0B7285
+   - #0EA5E9
+   estilo_iconografia: flat|lineal|duotono|3D suave
 
 Issues detectados:
 ${issuesText}

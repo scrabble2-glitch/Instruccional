@@ -2,7 +2,12 @@
 
 import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BASE_MATERIAL_MAX_BYTES, BASE_MATERIAL_MAX_CHARS } from "@/lib/constants/base-material";
+import {
+  BASE_MATERIAL_MAX_BYTES,
+  BASE_MATERIAL_MAX_CHARS,
+  BASE_MATERIAL_MAX_OFFICE_BYTES,
+  resolveBaseMaterialMaxBytes
+} from "@/lib/constants/base-material";
 import { extractDocxTextFromArrayBuffer, extractPptxTextFromArrayBuffer } from "@/lib/client/office-extract";
 
 type GenerateSuccess = {
@@ -38,7 +43,9 @@ const DEFAULT_FORM: FormState = {
   baseMaterialStrategy: "analyze_storyboard",
 };
 
-const BASE_MATERIAL_MAX_CLIENT_OFFICE_BYTES = 80_000_000; // 80 MB (client-side extraction for docx/pptx)
+function formatBytesToMb(bytes: number): string {
+  return `${(bytes / 1_000_000).toFixed(0)} MB`;
+}
 
 function toStageLabel(stage: string): string {
   const map: Record<string, string> = {
@@ -50,7 +57,7 @@ function toStageLabel(stage: string): string {
     cache_hit: "Caché encontrada",
     cache_miss: "Sin caché",
     model_request: "Generación IA",
-    model_repair: "Reparación JSON",
+    model_repair: "Normalización de salida",
     storyboard_enrich: "Compleción storyboard",
     pptx_export: "Exportación PPTX",
     quality_check: "Chequeo de calidad",
@@ -144,11 +151,10 @@ export function NewProjectForm() {
       return;
     }
 
-    const officeExt = ext === "pptx" || ext === "docx";
-    const maxBytes = officeExt ? Math.max(BASE_MATERIAL_MAX_BYTES, BASE_MATERIAL_MAX_CLIENT_OFFICE_BYTES) : BASE_MATERIAL_MAX_BYTES;
+    const maxBytes = resolveBaseMaterialMaxBytes(file.name, file.type);
 
     if (file.size > maxBytes) {
-      setError(`Archivo demasiado grande. Máximo ${Math.round(maxBytes / 1000)} KB.`);
+      setError(`Archivo demasiado grande. Máximo ${formatBytesToMb(maxBytes)}.`);
       return;
     }
 
@@ -157,6 +163,39 @@ export function NewProjectForm() {
     setBaseMaterialMeta(null);
 
     try {
+      const extractViaServer = async (): Promise<boolean> => {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const response = await fetch("/api/material/extract", {
+          method: "POST",
+          body: formData
+        });
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+          setError(payload?.error ?? "No fue posible extraer contenido del archivo.");
+          return false;
+        }
+
+        const payload = (await response.json()) as {
+          filename: string;
+          mimeType: string;
+          content: string;
+          truncated: boolean;
+          kind: string;
+        };
+
+        setForm((prev) => ({
+          ...prev,
+          baseMaterialFilename: payload.filename || file.name,
+          baseMaterialMimeType: payload.mimeType || file.type || "application/octet-stream",
+          baseMaterialContent: payload.content || ""
+        }));
+        setBaseMaterialMeta({ kind: payload.kind, truncated: Boolean(payload.truncated) });
+        return true;
+      };
+
       if (isTextLike) {
         const text = await file.text();
         if (text.length > BASE_MATERIAL_MAX_CHARS) {
@@ -176,83 +215,69 @@ export function NewProjectForm() {
 
       // For Office files (PPTX/DOCX), extract client-side to avoid uploading large binaries.
       if (ext === "pptx") {
-        const arrayBuffer = await file.arrayBuffer();
-        const extracted = await extractPptxTextFromArrayBuffer(arrayBuffer);
-        const normalized = extracted.trim();
-        if (!normalized.length) {
-          setError(
-            "No se detectó texto utilizable en el PPTX (puede contener solo imágenes). " +
-              "Intenta con otro documento o pega el contenido manualmente."
-          );
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const extracted = await extractPptxTextFromArrayBuffer(arrayBuffer);
+          const normalized = extracted.trim();
+
+          if (normalized.length) {
+            const truncated = normalized.length > BASE_MATERIAL_MAX_CHARS;
+            setForm((prev) => ({
+              ...prev,
+              baseMaterialFilename: file.name,
+              baseMaterialMimeType:
+                file.type || "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+              baseMaterialContent: truncated ? normalized.slice(0, BASE_MATERIAL_MAX_CHARS) : normalized
+            }));
+            setBaseMaterialMeta({ kind: "pptx", truncated });
+            return;
+          }
+        } catch {
+          // Fallback below.
+        }
+
+        if (file.size <= BASE_MATERIAL_MAX_OFFICE_BYTES && (await extractViaServer())) {
           return;
         }
 
-        const truncated = normalized.length > BASE_MATERIAL_MAX_CHARS;
-        setForm((prev) => ({
-          ...prev,
-          baseMaterialFilename: file.name,
-          baseMaterialMimeType:
-            file.type || "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-          baseMaterialContent: truncated ? normalized.slice(0, BASE_MATERIAL_MAX_CHARS) : normalized
-        }));
-        setBaseMaterialMeta({ kind: "pptx", truncated });
+        setError(
+          `No se detectó texto utilizable en el PPTX (puede contener solo imágenes). ` +
+            `Intenta con otro documento o pega el contenido manualmente.`
+        );
         return;
       }
 
       if (ext === "docx") {
-        const arrayBuffer = await file.arrayBuffer();
-        const extracted = await extractDocxTextFromArrayBuffer(arrayBuffer);
-        const normalized = extracted.trim();
-        if (!normalized.length) {
-          setError(
-            "No se detectó texto utilizable en el DOCX. " +
-              "Intenta con otro documento o pega el contenido manualmente."
-          );
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const extracted = await extractDocxTextFromArrayBuffer(arrayBuffer);
+          const normalized = extracted.trim();
+
+          if (normalized.length) {
+            const truncated = normalized.length > BASE_MATERIAL_MAX_CHARS;
+            setForm((prev) => ({
+              ...prev,
+              baseMaterialFilename: file.name,
+              baseMaterialMimeType:
+                file.type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              baseMaterialContent: truncated ? normalized.slice(0, BASE_MATERIAL_MAX_CHARS) : normalized
+            }));
+            setBaseMaterialMeta({ kind: "docx", truncated });
+            return;
+          }
+        } catch {
+          // Fallback below.
+        }
+
+        if (file.size <= BASE_MATERIAL_MAX_OFFICE_BYTES && (await extractViaServer())) {
           return;
         }
 
-        const truncated = normalized.length > BASE_MATERIAL_MAX_CHARS;
-        setForm((prev) => ({
-          ...prev,
-          baseMaterialFilename: file.name,
-          baseMaterialMimeType:
-            file.type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          baseMaterialContent: truncated ? normalized.slice(0, BASE_MATERIAL_MAX_CHARS) : normalized
-        }));
-        setBaseMaterialMeta({ kind: "docx", truncated });
+        setError("No se detectó texto utilizable en el DOCX. Intenta con otro documento o pega el contenido manualmente.");
         return;
       }
 
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fetch("/api/material/extract", {
-        method: "POST",
-        body: formData
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        // Para NotebookLM esto no es crítico: el usuario puede subir el archivo directamente a NotebookLM.
-        setError(payload?.error ?? "No fue posible extraer contenido del archivo.");
-        return;
-      }
-
-      const payload = (await response.json()) as {
-        filename: string;
-        mimeType: string;
-        content: string;
-        truncated: boolean;
-        kind: string;
-      };
-
-      setForm((prev) => ({
-        ...prev,
-        baseMaterialFilename: payload.filename || file.name,
-        baseMaterialMimeType: payload.mimeType || file.type || "application/octet-stream",
-        baseMaterialContent: payload.content || ""
-      }));
-      setBaseMaterialMeta({ kind: payload.kind, truncated: Boolean(payload.truncated) });
+      await extractViaServer();
     } catch {
       setError("Error de red al procesar el archivo base.");
     } finally {
@@ -590,8 +615,8 @@ export function NewProjectForm() {
 	              <span className="font-mono">.json</span>, <span className="font-mono">.pdf</span>,{" "}
 	              <span className="font-mono">.docx</span>, <span className="font-mono">.pptx</span>,{" "}
 	              imágenes (<span className="font-mono">.png</span>, <span className="font-mono">.jpg</span>,{" "}
-	              <span className="font-mono">.webp</span>). Máximo {Math.round(BASE_MATERIAL_MAX_BYTES / 1_000_000)} MB (PDF/imágenes) o{" "}
-	              {Math.round(BASE_MATERIAL_MAX_CLIENT_OFFICE_BYTES / 1_000_000)} MB (DOCX/PPTX) y{" "}
+	              <span className="font-mono">.webp</span>, <span className="font-mono">.gif</span>). Máximo {Math.round(BASE_MATERIAL_MAX_BYTES / 1_000_000)} MB (PDF/imágenes) o{" "}
+	              {Math.round(BASE_MATERIAL_MAX_OFFICE_BYTES / 1_000_000)} MB (DOCX/PPTX) y{" "}
 	              {BASE_MATERIAL_MAX_CHARS.toLocaleString("es-ES")} caracteres.
 	            </p>
 

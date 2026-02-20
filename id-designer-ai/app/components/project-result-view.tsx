@@ -58,7 +58,7 @@ function toStageLabel(stage: string): string {
     cache_hit: "Caché encontrada",
     cache_miss: "Sin caché",
     model_request: "Generación IA",
-    model_repair: "Reparación JSON",
+    model_repair: "Normalización de salida",
     storyboard_enrich: "Compleción storyboard",
     quality_check: "Chequeo de calidad",
     persisting: "Persistencia",
@@ -68,13 +68,23 @@ function toStageLabel(stage: string): string {
   return map[stage] ?? "Progreso";
 }
 
+function resolveInitialModel(model?: string): string {
+  const normalized = (model ?? "").toLowerCase().trim();
+  if (!normalized) return "gemini-2.5-pro";
+  if (normalized.includes("flash")) return "gemini-2.5-pro";
+  if (normalized === "gemini-3" || normalized === "gemini3" || normalized === "gemini-3-pro") {
+    return "gemini-2.5-pro";
+  }
+  return model ?? "gemini-2.5-pro";
+}
+
 export function ProjectResultView(props: ProjectResultViewProps) {
   const { project, selected, versions, currentVersionId } = props;
   const router = useRouter();
 
   const [editInstruction, setEditInstruction] = useState("");
   const [targetSection, setTargetSection] = useState<(typeof SECTION_OPTIONS)[number]["value"]>("all");
-  const [model, setModel] = useState(selected.generationParams.model ?? "gemini-2.5-flash");
+  const [model, setModel] = useState(resolveInitialModel(selected.generationParams.model));
   const [safetyMode, setSafetyMode] = useState<"normal" | "estricto">(
     selected.generationParams.safetyMode ?? "normal"
   );
@@ -302,6 +312,12 @@ export function ProjectResultView(props: ProjectResultViewProps) {
                   className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition hover:bg-slate-50"
                 >
                   Exportar PPTX
+                </a>
+                <a
+                  href={`/api/versions/${selected.id}/export?format=package`}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition hover:bg-slate-50"
+                >
+                  Exportar paquete
                 </a>
               </div>
             </div>
@@ -546,6 +562,17 @@ export function ProjectResultView(props: ProjectResultViewProps) {
                 <ul className="mt-2 space-y-1">
                   {selected.qualityReport.fixSuggestions.map((suggestion, index) => (
                     <li key={`fix-${index}`}>- {suggestion}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {selected.qualityReport.editorialChecklist?.length ? (
+              <div className="mt-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
+                <p className="font-medium text-slate-900">Checklist editorial (manual)</p>
+                <ul className="mt-2 space-y-1">
+                  {selected.qualityReport.editorialChecklist.map((item) => (
+                    <li key={item.id}>- {item.label}: {item.detail}</li>
                   ))}
                 </ul>
               </div>

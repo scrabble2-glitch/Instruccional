@@ -9,7 +9,7 @@ const EnvSchema = z.object({
   // Allow booting the app (login, UI, DB) without Gemini configured.
   // Generation endpoints must validate it's present before calling Gemini.
   GEMINI_API_KEY: z.string().default(""),
-  GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
+  GEMINI_MODEL: z.string().default("gemini-2.5-pro"),
   DEFAULT_SAFETY_MODE: z.enum(["normal", "estricto"]).default("normal"),
   CACHE_TTL_MINUTES: z.coerce.number().int().positive().default(1440),
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(20),

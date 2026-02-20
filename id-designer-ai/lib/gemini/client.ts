@@ -19,6 +19,40 @@ export interface GeminiGenerateResult {
   usage?: GeminiUsage;
 }
 
+function normalizeModelName(model: string): string {
+  return model.toLowerCase().replace(/\s+/g, "").trim();
+}
+
+function isModelNotFound(status: number, text: string): boolean {
+  if (status !== 404) return false;
+  const normalized = text.toLowerCase();
+  return normalized.includes("model") && (normalized.includes("not found") || normalized.includes("notfound"));
+}
+
+async function requestGemini(params: GeminiGenerateParams): Promise<Response> {
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${params.model}:generateContent`;
+  return fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": env.GEMINI_API_KEY
+    },
+    body: JSON.stringify({
+      systemInstruction: {
+        role: "system",
+        parts: [{ text: params.systemInstruction }]
+      },
+      contents: [{ role: "user", parts: [{ text: params.userPrompt }] }],
+      safetySettings: resolveSafetySettings(params.safetyMode),
+      generationConfig: {
+        temperature: 0.2,
+        responseMimeType: "application/json",
+        responseSchema: outputJsonSchema
+      }
+    })
+  });
+}
+
 function resolveSafetySettings(mode: SafetyMode): Array<Record<string, string>> {
   if (mode === "estricto") {
     return [
@@ -46,31 +80,20 @@ export async function callGeminiGenerateContent(
     );
   }
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${params.model}:generateContent`;
+  const requestedModel = params.model.trim();
+  let response = await requestGemini(params);
+  let errorText = response.ok ? "" : await response.text().catch(() => "");
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": env.GEMINI_API_KEY
-    },
-    body: JSON.stringify({
-      systemInstruction: {
-        role: "system",
-        parts: [{ text: params.systemInstruction }]
-      },
-      contents: [{ role: "user", parts: [{ text: params.userPrompt }] }],
-      safetySettings: resolveSafetySettings(params.safetyMode),
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: "application/json",
-        responseSchema: outputJsonSchema
-      }
-    })
-  });
+  // Fallback if Gemini 3 is not enabled in this account/project.
+  if (!response.ok && isModelNotFound(response.status, errorText) && normalizeModelName(requestedModel).includes("gemini-3")) {
+    response = await requestGemini({
+      ...params,
+      model: "gemini-2.5-pro"
+    });
+    errorText = response.ok ? "" : await response.text().catch(() => "");
+  }
 
   if (!response.ok) {
-    const errorText = await response.text();
     throw new Error(`Gemini error (${response.status}): ${errorText.slice(0, 500)}`);
   }
 
@@ -103,16 +126,12 @@ interface GeminiExtractParams {
   dataBase64: string;
 }
 
-export async function callGeminiExtractTextFromMedia(params: GeminiExtractParams): Promise<GeminiGenerateResult> {
-  if (!env.GEMINI_API_KEY) {
-    throw new Error(
-      "GEMINI_API_KEY no está configurada. Define la variable de entorno para extraer texto de documentos/imágenes."
-    );
-  }
-
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${params.model}:generateContent`;
-
-  const response = await fetch(endpoint, {
+async function requestGeminiExtractTextFromMedia(
+  params: GeminiExtractParams,
+  model: string
+): Promise<Response> {
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  return fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -139,9 +158,26 @@ export async function callGeminiExtractTextFromMedia(params: GeminiExtractParams
       }
     })
   });
+}
+
+export async function callGeminiExtractTextFromMedia(params: GeminiExtractParams): Promise<GeminiGenerateResult> {
+  if (!env.GEMINI_API_KEY) {
+    throw new Error(
+      "GEMINI_API_KEY no está configurada. Define la variable de entorno para extraer texto de documentos/imágenes."
+    );
+  }
+
+  const requestedModel = params.model.trim();
+  let response = await requestGeminiExtractTextFromMedia(params, requestedModel);
+  let errorText = response.ok ? "" : await response.text().catch(() => "");
+
+  // Fallback if Gemini 3 is not enabled in this account/project.
+  if (!response.ok && isModelNotFound(response.status, errorText) && normalizeModelName(requestedModel).includes("gemini-3")) {
+    response = await requestGeminiExtractTextFromMedia(params, "gemini-2.5-pro");
+    errorText = response.ok ? "" : await response.text().catch(() => "");
+  }
 
   if (!response.ok) {
-    const errorText = await response.text();
     throw new Error(`Gemini error (${response.status}): ${errorText.slice(0, 500)}`);
   }
 

@@ -29,9 +29,11 @@ Aplicación web profesional para generar diseño instruccional con IA (Gemini AP
 - Panel de calidad interno (alineación + coherencia + carga cognitiva)
 - Versionado persistente de cada generación (prompt, parámetros, respuesta, timestamp)
 - Edición guiada por instrucción para regenerar secciones específicas
-- Exportación JSON, Markdown y PPTX (descarga)
+- Exportación JSON, Markdown, PPTX y **paquete de entrega ZIP** (descarga)
 - Al finalizar la generación en streaming, se intenta descargar automáticamente el PPTX
-- En exportación PPTX (Storyboard OVA): composición tipo Genially (tarjetas, jerarquía visual), imágenes automáticas (Openverse) y prototipo de interactividad (botones/popups)
+- En exportación PPTX (Storyboard OVA): composición tipo Genially (tarjetas, jerarquía visual), imágenes automáticas (Openverse), especificación técnica de infografía y prototipo de interactividad (botones/popups)
+- Render de diagrama Mermaid (vista técnica embebida en slide) cuando viene en `infografia_tecnica`
+- Checklist QA automático + checklist editorial manual
 - Rate limiting por IP (default 20 req/min)
 - Caching por hash de brief+parámetros
 - Estimación de tokens/costo por request
@@ -98,7 +100,7 @@ cp .env.example .env
 - `SINGLE_USER_PASSWORD`: clave de acceso de la app
 - `SESSION_SECRET`: secreto para firmar cookie
 - `GEMINI_API_KEY`: API key de Gemini
-- `GEMINI_MODEL`: por defecto `gemini-2.5-flash`
+- `GEMINI_MODEL`: por defecto `gemini-2.5-pro`
 
 4. Prepara base de datos:
 
@@ -169,7 +171,7 @@ npx vercel link
 - `SINGLE_USER_PASSWORD`
 - `SESSION_SECRET`
 - `GEMINI_API_KEY`
-- `GEMINI_MODEL=gemini-2.5-flash`
+- `GEMINI_MODEL=gemini-2.5-pro`
 - `DEFAULT_SAFETY_MODE=normal`
 - `CACHE_TTL_MINUTES=1440`
 - `RATE_LIMIT_PER_MINUTE=20`
@@ -228,15 +230,21 @@ Esto evita colisiones entre nombres similares y mantiene el almacenamiento organ
 En el exportador PPTX del modo **Storyboard OVA** la app intenta:
 
 - Buscar y descargar una imagen por pantalla desde **Openverse** (sin API key).
-- Incrustarla dentro del slide con marca de agua `PREVISUALIZACION`.
+- Incrustarla dentro del slide con marca de agua `PREVISUALIZACION` o `REVISION LICENCIA` según política de licencia detectada.
 - Guardar/cachar las imágenes en `LOCAL_COURSE_ROOT_DIR/<curso>/assets/` cuando esté configurado.
 - Registrar en las Notas del orador la atribución/licencia cuando esté disponible.
+- Priorizar licencias permisivas y marcar revisión manual cuando la licencia sea ambigua/restrictiva.
 
 Si falla la descarga (red/permiso/imagen), se usa un placeholder visual (formas) para no dejar la diapositiva "solo texto".
 
 ## Carpetas locales por curso (opcional)
 
 Si configuras `LOCAL_COURSE_ROOT_DIR`, en cada generación de un **nuevo curso** la app crea/asegura una carpeta local con el nombre del curso (sanitizado).
+
+Además, al exportar `format=package`, guarda artefactos en:
+
+- `LOCAL_COURSE_ROOT_DIR/<curso>/exports/<base>/`
+- `LOCAL_COURSE_ROOT_DIR/<curso>/exports/<base>-package.zip`
 
 Ejemplo:
 

@@ -43,7 +43,8 @@ function normalizeQualityReport(value: unknown): QualityReport {
     overallScore: 0,
     items: [],
     issues: [],
-    fixSuggestions: []
+    fixSuggestions: [],
+    editorialChecklist: []
   };
 
   if (!value || typeof value !== "object") {
@@ -56,7 +57,8 @@ function normalizeQualityReport(value: unknown): QualityReport {
     overallScore: typeof candidate.overallScore === "number" ? candidate.overallScore : 0,
     items: Array.isArray(candidate.items) ? candidate.items : [],
     issues: Array.isArray(candidate.issues) ? candidate.issues : [],
-    fixSuggestions: Array.isArray(candidate.fixSuggestions) ? candidate.fixSuggestions : []
+    fixSuggestions: Array.isArray(candidate.fixSuggestions) ? candidate.fixSuggestions : [],
+    editorialChecklist: Array.isArray(candidate.editorialChecklist) ? candidate.editorialChecklist : []
   };
 }
 

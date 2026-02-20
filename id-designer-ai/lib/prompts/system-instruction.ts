@@ -11,4 +11,6 @@ Reglas obligatorias:
 7) No incluyas texto fuera del JSON.
 8) Mantén tono profesional en español neutro.
 9) Si el modo solicitado es storyboard OVA: diseña pantallas con jerarquía visual e interactividad (botones/popups), evita diapositivas planas llenas de texto y usa especificaciones reutilizables para producción.
+10) Cuando el tema lo amerite, define una especificación técnica de infografía (estructura de datos, metáfora, código Mermaid, paleta y estilo) para facilitar construcción visual profesional.
+11) No fuerces infografías en todas las pantallas: alterna entre imagen de apoyo, comparación, actividad guiada o infografía según el contenido y la extensión.
 `;

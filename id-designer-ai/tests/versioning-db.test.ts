@@ -20,7 +20,7 @@ beforeAll(async () => {
       "evaluationApproach" TEXT,
       "language" TEXT NOT NULL DEFAULT 'es',
       "tone" TEXT NOT NULL DEFAULT 'profesional',
-      "preferredModel" TEXT NOT NULL DEFAULT 'gemini-2.5-flash',
+      "preferredModel" TEXT NOT NULL DEFAULT 'gemini-3-pro',
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -77,7 +77,7 @@ describe("Versionado en DB", () => {
         evaluationApproach: "",
         language: "español",
         tone: "profesional",
-        preferredModel: "gemini-2.5-flash"
+        preferredModel: "gemini-3-pro"
       }
     });
 
@@ -101,7 +101,7 @@ describe("Versionado en DB", () => {
         tone: "profesional"
       },
       options: {
-        model: "gemini-2.5-flash",
+        model: "gemini-3-pro",
         safetyMode: "normal" as const,
         template: "general" as const,
         mode: "full" as const
@@ -111,7 +111,7 @@ describe("Versionado en DB", () => {
     const first = await createVersionRecord({
       projectId: project.id,
       request: requestPayload,
-      model: "gemini-2.5-flash",
+      model: "gemini-3-pro",
       promptSystem: SYSTEM_INSTRUCTION,
       promptUser: "prompt 1",
       response: sampleOutput,
@@ -131,7 +131,7 @@ describe("Versionado en DB", () => {
     const second = await createVersionRecord({
       projectId: project.id,
       request: requestPayload,
-      model: "gemini-2.5-flash",
+      model: "gemini-3-pro",
       promptSystem: SYSTEM_INSTRUCTION,
       promptUser: "prompt 2",
       response: sampleOutput,

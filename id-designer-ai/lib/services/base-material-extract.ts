@@ -1,8 +1,8 @@
 import { env, SafetyMode } from "@/lib/env";
 import { callGeminiExtractTextFromMedia } from "@/lib/gemini/client";
-import { BASE_MATERIAL_MAX_BYTES, BASE_MATERIAL_MAX_CHARS } from "@/lib/constants/base-material";
+import { BASE_MATERIAL_MAX_BYTES, BASE_MATERIAL_MAX_CHARS, BASE_MATERIAL_MAX_OFFICE_BYTES } from "@/lib/constants/base-material";
 
-export { BASE_MATERIAL_MAX_BYTES, BASE_MATERIAL_MAX_CHARS };
+export { BASE_MATERIAL_MAX_BYTES, BASE_MATERIAL_MAX_CHARS, BASE_MATERIAL_MAX_OFFICE_BYTES };
 
 export type SupportedBaseMaterialKind = "text" | "pdf" | "docx" | "pptx" | "image";
 
@@ -230,6 +230,29 @@ async function extractPdfTextViaGemini(params: {
   return result.rawText;
 }
 
+async function extractOfficeTextViaGemini(params: {
+  kind: "docx" | "pptx";
+  buffer: Buffer;
+  mimeType: string;
+  safetyMode: SafetyMode;
+}): Promise<string> {
+  const data = params.buffer.toString("base64");
+  const instruction =
+    params.kind === "pptx"
+      ? "Extrae todo el texto legible de la presentación PPTX, incluyendo títulos, subtítulos, viñetas y notas del presentador si existen. Devuelve solo texto plano ordenado por diapositiva."
+      : "Extrae todo el texto legible del documento DOCX, respetando la estructura general de secciones y párrafos. Devuelve solo texto plano.";
+
+  const result = await callGeminiExtractTextFromMedia({
+    model: env.GEMINI_MODEL,
+    safetyMode: params.safetyMode,
+    mimeType: params.mimeType,
+    dataBase64: data,
+    instruction
+  });
+
+  return result.rawText;
+}
+
 export async function extractBaseMaterialText(params: {
   filename: string;
   mimeType: string;
@@ -264,9 +287,45 @@ export async function extractBaseMaterialText(params: {
       } catch {
         // Fall back to zip-based parsing below.
       }
-      return { kind, text: await extractDocxTextFromZip(params.buffer) };
+      try {
+        const text = await extractDocxTextFromZip(params.buffer);
+        if (text.trim().length > 0) {
+          return { kind, text };
+        }
+      } catch {
+        // Fall back to Gemini extraction below.
+      }
+      try {
+        const text = await extractOfficeTextViaGemini({
+          kind: "docx",
+          buffer: params.buffer,
+          mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          safetyMode: params.safetyMode
+        });
+        return { kind, text };
+      } catch {
+        return { kind, text: "" };
+      }
     case "pptx":
-      return { kind, text: await extractPptxText(params.buffer) };
+      try {
+        const text = await extractPptxText(params.buffer);
+        if (text.trim().length > 0) {
+          return { kind, text };
+        }
+      } catch {
+        // Fall back to Gemini extraction below.
+      }
+      try {
+        const text = await extractOfficeTextViaGemini({
+          kind: "pptx",
+          buffer: params.buffer,
+          mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          safetyMode: params.safetyMode
+        });
+        return { kind, text };
+      } catch {
+        return { kind, text: "" };
+      }
     case "image":
       return { kind, text: await extractImageText(params.buffer, effectiveMimeType, params.safetyMode) };
     case "text":

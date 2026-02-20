@@ -24,7 +24,7 @@ async function createSqliteTablesIfNeeded(): Promise<void> {
       "evaluationApproach" TEXT,
       "language" TEXT NOT NULL DEFAULT 'es',
       "tone" TEXT NOT NULL DEFAULT 'profesional',
-      "preferredModel" TEXT NOT NULL DEFAULT 'gemini-2.5-flash',
+      "preferredModel" TEXT NOT NULL DEFAULT 'gemini-2.5-pro',
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     );

@@ -177,7 +177,13 @@ function pickResourceByType(unit: CourseUnit, type: string): string | null {
 function otherResources(unit: CourseUnit): CourseUnit["resources"] {
   return unit.resources.filter((resource) => {
     const key = normalizeKey(resource.type || "");
-    return key !== "guion_audio" && key !== "notas_construccion" && key !== "imagen_query" && key !== "visual_spec";
+    return (
+      key !== "guion_audio" &&
+      key !== "notas_construccion" &&
+      key !== "imagen_query" &&
+      key !== "visual_spec" &&
+      key !== "infografia_tecnica"
+    );
   });
 }
 
@@ -191,6 +197,7 @@ function buildNotes(params: {
   visualQuery: string | null;
   visualAttribution: string[];
   visualSpecRaw: string | null;
+  infographicTechRaw: string | null;
   extraResources: string[];
 }): string {
   const lines: string[] = [];
@@ -227,6 +234,12 @@ function buildNotes(params: {
 
   lines.push("VISUAL SPEC (infografia / UI):");
   lines.push(params.visualSpecRaw?.trim() ? params.visualSpecRaw.trim() : "(No provisto por IA. Regenera para completar.)");
+  lines.push("");
+
+  lines.push("ESPECIFICACION TECNICA DE INFOGRAFIA:");
+  lines.push(
+    params.infographicTechRaw?.trim() ? params.infographicTechRaw.trim() : "(No provista por IA. Regenera para completar.)"
+  );
   lines.push("");
 
   if (params.extraResources.length) {
@@ -266,6 +279,52 @@ const STORY = {
   accent2: "0EA5E9"
 } as const;
 
+const STORY_MASTERS = [
+  {
+    name: "Atlas",
+    accent: STORY.accent,
+    accent2: STORY.accent2,
+    panelTint: "ECFEFF",
+    panelBorder: "A5F3FC"
+  },
+  {
+    name: "Nexo",
+    accent: "0369A1",
+    accent2: "0EA5E9",
+    panelTint: "EFF6FF",
+    panelBorder: "BFDBFE"
+  },
+  {
+    name: "Impulso",
+    accent: "0F766E",
+    accent2: "22C55E",
+    panelTint: "ECFDF5",
+    panelBorder: "99F6E4"
+  }
+] as const;
+
+function masterForUnit(index: number) {
+  return STORY_MASTERS[index % STORY_MASTERS.length];
+}
+
+function buildSoftShadow(): {
+  type: "outer";
+  color: string;
+  opacity: number;
+  blur: number;
+  offset: number;
+  angle: number;
+} {
+  return {
+    type: "outer",
+    color: "000000",
+    opacity: 0.12,
+    blur: 10,
+    offset: 2,
+    angle: 45
+  };
+}
+
 function truncateText(text: string, maxChars: number): string {
   const cleaned = safeLine(text);
   if (cleaned.length <= maxChars) return cleaned;
@@ -302,6 +361,7 @@ function addVisualWatermark(
 }
 
 type StoryVisualLayout = "process_steps" | "cards" | "timeline" | "bullets";
+type StoryVisualMode = "auto" | "infographic" | "image_support" | "comparison" | "activity";
 
 interface StoryVisualItem {
   label?: string;
@@ -317,6 +377,7 @@ interface StoryPopupSpec {
 
 interface StoryVisualSpec {
   layout: StoryVisualLayout;
+  visualMode: StoryVisualMode;
   items: StoryVisualItem[];
   buttons: string[];
   popups: StoryPopupSpec[];
@@ -332,7 +393,7 @@ function parseButtonsLine(value: string): string[] {
 }
 
 function parseVisualSpec(raw: string | null, fallbackFrom: { title: string; content: string[] }): StoryVisualSpec {
-  const base: StoryVisualSpec = { layout: "bullets", items: [], buttons: [], popups: [] };
+  const base: StoryVisualSpec = { layout: "bullets", visualMode: "auto", items: [], buttons: [], popups: [] };
   if (!raw?.trim()) {
     // Basic fallback from content_outline
     const items = clampLines(fallbackFrom.content, 4, 90).map((line) => ({ title: line, body: "" }));
@@ -355,6 +416,21 @@ function parseVisualSpec(raw: string | null, fallbackFrom: { title: string; cont
       else if (value.includes("cards")) base.layout = "cards";
       else if (value.includes("timeline")) base.layout = "timeline";
       else base.layout = "bullets";
+      continue;
+    }
+
+    if (
+      lower.startsWith("visual_mode:") ||
+      lower.startsWith("visual_mode=") ||
+      lower.startsWith("tipo_visual:") ||
+      lower.startsWith("tipo_visual=")
+    ) {
+      const value = normalizeKey(line.split(/[:=]/).slice(1).join(":").trim());
+      if (value.includes("infografia")) base.visualMode = "infographic";
+      else if (value.includes("compar")) base.visualMode = "comparison";
+      else if (value.includes("imagen") || value.includes("support")) base.visualMode = "image_support";
+      else if (value.includes("actividad") || value.includes("interact")) base.visualMode = "activity";
+      else base.visualMode = "auto";
       continue;
     }
 
@@ -467,6 +543,544 @@ function parseVisualSpec(raw: string | null, fallbackFrom: { title: string; cont
   return base;
 }
 
+interface InfographicTechnicalSpec {
+  topic: string;
+  requiresInfographic: boolean;
+  dataStructure: string[];
+  visualMetaphor: string;
+  mermaidCode: string;
+  palette: string[];
+  iconStyle: string;
+}
+
+function extractHexPalette(text: string): string[] {
+  const matches = text.match(/#[0-9a-fA-F]{6}\b/g) ?? [];
+  const unique = new Set(matches.map((value) => value.toUpperCase()));
+  return Array.from(unique).slice(0, 6);
+}
+
+function slugifyMermaidNode(value: string, fallbackIndex: number): string {
+  const cleaned = value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 18);
+  if (cleaned) return cleaned;
+  return `node_${fallbackIndex + 1}`;
+}
+
+function buildFallbackMermaid(params: { topic: string; dataStructure: string[] }): string {
+  const nodes = (params.dataStructure.length ? params.dataStructure : [params.topic]).slice(0, 5);
+  const lines = ["flowchart LR"];
+  for (let i = 0; i < nodes.length; i += 1) {
+    const id = slugifyMermaidNode(nodes[i], i);
+    lines.push(`${id}["${truncateText(nodes[i], 40)}"]`);
+    if (i > 0) {
+      const prev = slugifyMermaidNode(nodes[i - 1], i - 1);
+      lines.push(`${prev} --> ${id}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+function parseInfographicTechnicalSpec(
+  raw: string | null,
+  fallbackFrom: { topic: string; visual: StoryVisualSpec }
+): InfographicTechnicalSpec {
+  const inlineMermaidField = raw?.match(/codigo[_\s]mermaid\s*[:=]\s*([^\n]+)/i)?.[1]?.trim() ?? "";
+  const fallbackData = fallbackFrom.visual.items.length
+    ? fallbackFrom.visual.items.map((item) => `${item.title}${item.body ? ` > ${item.body}` : ""}`)
+    : clampLines([fallbackFrom.topic], 1, 80);
+
+  const base: InfographicTechnicalSpec = {
+    topic: truncateText(fallbackFrom.topic, 70),
+    requiresInfographic: false,
+    dataStructure: clampLines(fallbackData, 5, 95),
+    visualMetaphor: "Ruta secuencial de aprendizaje con nodos conectados.",
+    mermaidCode: "",
+    palette: ["#0B7285", "#0EA5E9", "#F8FAFC", "#0F172A"],
+    iconStyle: "lineal"
+  };
+
+  if (!raw?.trim()) {
+    base.requiresInfographic = fallbackFrom.visual.layout === "process_steps" || fallbackFrom.visual.layout === "timeline";
+    base.mermaidCode = buildFallbackMermaid({ topic: base.topic, dataStructure: base.dataStructure });
+    return base;
+  }
+
+  const lines = raw.split(/\r?\n/g);
+  let activeList: "data" | "palette" | null = null;
+  let inMermaidBlock = false;
+  const mermaidLines: string[] = [];
+  const dataLines: string[] = [];
+  const paletteLines: string[] = [];
+  const metadata = raw.toLowerCase();
+
+  for (const lineRaw of lines) {
+    const line = lineRaw.trim();
+    const lower = line.toLowerCase();
+    const normalized = normalizeKey(line);
+    if (!line) continue;
+
+    if (line.startsWith("```")) {
+      if (inMermaidBlock) {
+        inMermaidBlock = false;
+        continue;
+      }
+      if (lower.includes("mermaid")) {
+        inMermaidBlock = true;
+        continue;
+      }
+    }
+
+    if (inMermaidBlock) {
+      mermaidLines.push(lineRaw.replace(/\t/g, "  "));
+      continue;
+    }
+
+    if (
+      normalized.startsWith("tema:") ||
+      normalized.startsWith("tema=") ||
+      normalized.startsWith("topic:") ||
+      normalized.startsWith("topic=")
+    ) {
+      base.topic = truncateText(line.split(/[:=]/).slice(1).join(":").trim() || base.topic, 70);
+      activeList = null;
+      continue;
+    }
+
+    if (
+      normalized.startsWith("requiere_infografia:") ||
+      normalized.startsWith("requiere_infografia=") ||
+      normalized.startsWith("requiere infografia:")
+    ) {
+      const value = normalizeKey(line.split(/[:=]/).slice(1).join(":"));
+      base.requiresInfographic = value.includes("si") || value.includes("yes") || value.includes("true");
+      activeList = null;
+      continue;
+    }
+
+    if (normalized.startsWith("estructura_datos:") || normalized.startsWith("estructura de datos:")) {
+      activeList = "data";
+      continue;
+    }
+
+    if (normalized.startsWith("metafora_visual:") || normalized.startsWith("metafora visual:")) {
+      base.visualMetaphor = truncateText(line.split(/[:=]/).slice(1).join(":").trim() || base.visualMetaphor, 120);
+      activeList = null;
+      continue;
+    }
+
+    if (
+      normalized.startsWith("codigo_mermaid:") ||
+      normalized.startsWith("codigo mermaid:") ||
+      normalized.startsWith("mermaid:")
+    ) {
+      activeList = null;
+      continue;
+    }
+
+    if (normalized.startsWith("paleta_colores:") || normalized.startsWith("paleta de colores:")) {
+      activeList = "palette";
+      continue;
+    }
+
+    if (
+      normalized.startsWith("estilo_iconografia:") ||
+      normalized.startsWith("estilo iconografia:") ||
+      normalized.startsWith("iconografia:")
+    ) {
+      base.iconStyle = truncateText(line.split(/[:=]/).slice(1).join(":").trim() || base.iconStyle, 60);
+      activeList = null;
+      continue;
+    }
+
+    if ((line.startsWith("-") || line.startsWith("•")) && activeList === "data") {
+      dataLines.push(line.replace(/^[-•]\s*/g, "").trim());
+      continue;
+    }
+
+    if ((line.startsWith("-") || line.startsWith("•")) && activeList === "palette") {
+      paletteLines.push(line.replace(/^[-•]\s*/g, "").trim());
+      continue;
+    }
+  }
+
+  if (!dataLines.length) {
+    const fallbackDataFromRaw = raw
+      .split(/\r?\n/g)
+      .map((line) => safeLine(line))
+      .filter((line) => line.startsWith("-") || line.startsWith("•"))
+      .map((line) => line.replace(/^[-•]\s*/g, ""))
+      .filter(Boolean);
+    if (fallbackDataFromRaw.length) dataLines.push(...fallbackDataFromRaw);
+  }
+
+  if (dataLines.length) {
+    base.dataStructure = clampLines(dataLines, 6, 95);
+  }
+
+  const inlineMermaid = raw.match(/```mermaid\s*([\s\S]*?)```/i)?.[1]?.trim();
+  if (inlineMermaid) {
+    base.mermaidCode = inlineMermaid;
+  } else if (inlineMermaidField) {
+    base.mermaidCode = inlineMermaidField;
+  } else if (mermaidLines.length) {
+    base.mermaidCode = mermaidLines.join("\n").trim();
+  } else {
+    base.mermaidCode = buildFallbackMermaid({ topic: base.topic, dataStructure: base.dataStructure });
+  }
+
+  const palette = [...extractHexPalette(raw), ...extractHexPalette(paletteLines.join("\n"))];
+  if (palette.length) {
+    base.palette = palette.slice(0, 6);
+  }
+
+  if (!base.visualMetaphor.trim()) {
+    base.visualMetaphor = base.requiresInfographic
+      ? "Mapa de conceptos conectados con progresion visual."
+      : "No aplica infografia compleja; usar imagen de apoyo contextual.";
+  }
+
+  if (!base.iconStyle.trim()) {
+    base.iconStyle = metadata.includes("3d") ? "3D suave" : "lineal";
+  }
+
+  return base;
+}
+
+interface MermaidNode {
+  id: string;
+  label: string;
+}
+
+interface MermaidEdge {
+  from: string;
+  to: string;
+}
+
+interface MermaidGraph {
+  direction: "LR" | "TB";
+  nodes: MermaidNode[];
+  edges: MermaidEdge[];
+}
+
+function parseMermaidGraph(code: string): MermaidGraph | null {
+  if (!code.trim()) return null;
+
+  const lines = code
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) return null;
+
+  let direction: "LR" | "TB" = "LR";
+  const first = lines[0].toLowerCase();
+  if (first.startsWith("flowchart") || first.startsWith("graph")) {
+    if (first.includes("tb") || first.includes("td")) direction = "TB";
+    if (first.includes("lr")) direction = "LR";
+  }
+
+  const nodeMap = new Map<string, MermaidNode>();
+  const edges: MermaidEdge[] = [];
+
+  const nodeDefRegex = /([A-Za-z0-9_]+)\s*\["([^"]+)"\]/g;
+  for (const line of lines) {
+    let match: RegExpExecArray | null = null;
+    while ((match = nodeDefRegex.exec(line)) !== null) {
+      const id = match[1];
+      const label = truncateText(match[2], 40);
+      if (!nodeMap.has(id)) {
+        nodeMap.set(id, { id, label });
+      }
+    }
+  }
+
+  const edgeRegex = /([A-Za-z0-9_]+)\s*[-.]+>?[-.]*\s*([A-Za-z0-9_]+)/g;
+  for (const line of lines) {
+    let match: RegExpExecArray | null = null;
+    while ((match = edgeRegex.exec(line)) !== null) {
+      const from = match[1];
+      const to = match[2];
+      if (from.toLowerCase() === "flowchart" || from.toLowerCase() === "graph") continue;
+      if (!nodeMap.has(from)) nodeMap.set(from, { id: from, label: from });
+      if (!nodeMap.has(to)) nodeMap.set(to, { id: to, label: to });
+      edges.push({ from, to });
+    }
+  }
+
+  const nodes = Array.from(nodeMap.values()).slice(0, 6);
+  const edgeFiltered = edges.filter(
+    (edge) => nodes.some((node) => node.id === edge.from) && nodes.some((node) => node.id === edge.to)
+  );
+
+  if (!nodes.length) return null;
+  return {
+    direction,
+    nodes,
+    edges: edgeFiltered
+  };
+}
+
+function orderMermaidNodes(graph: MermaidGraph): MermaidNode[] {
+  if (!graph.edges.length) return graph.nodes.slice(0, 5);
+
+  const incoming = new Map<string, number>();
+  for (const node of graph.nodes) incoming.set(node.id, 0);
+  for (const edge of graph.edges) incoming.set(edge.to, (incoming.get(edge.to) ?? 0) + 1);
+
+  const startNode = graph.nodes.find((node) => (incoming.get(node.id) ?? 0) === 0) ?? graph.nodes[0];
+  const ordered: MermaidNode[] = [];
+  const visited = new Set<string>();
+  let cursor: MermaidNode | undefined = startNode;
+
+  while (cursor && !visited.has(cursor.id) && ordered.length < 5) {
+    ordered.push(cursor);
+    visited.add(cursor.id);
+    const nextEdge = graph.edges.find((edge) => edge.from === cursor?.id && !visited.has(edge.to));
+    cursor = nextEdge ? graph.nodes.find((node) => node.id === nextEdge.to) : undefined;
+  }
+
+  for (const node of graph.nodes) {
+    if (ordered.length >= 5) break;
+    if (!visited.has(node.id)) ordered.push(node);
+  }
+
+  return ordered;
+}
+
+function renderMermaidMiniDiagram(
+  slide: PptxGenJS.Slide,
+  area: { x: number; y: number; w: number; h: number },
+  spec: InfographicTechnicalSpec
+) {
+  const graph = parseMermaidGraph(spec.mermaidCode);
+  if (!graph) {
+    slide.addText(clampLines(spec.mermaidCode.split(/\r?\n/g), 7, 52).join("\n"), {
+      x: area.x,
+      y: area.y,
+      w: area.w,
+      h: area.h,
+      fontFace: "Consolas",
+      fontSize: 7,
+      color: STORY.muted,
+      valign: "top"
+    });
+    return;
+  }
+
+  const nodes = orderMermaidNodes(graph);
+  const palette = spec.palette.length ? spec.palette : ["#0B7285", "#0EA5E9", "#38BDF8", "#0F172A"];
+  const nodeCount = Math.max(1, Math.min(nodes.length, 5));
+  if (graph.direction === "TB") {
+    const gapY = 0.08;
+    const nodeH = Math.max(0.26, (area.h - gapY * (nodeCount - 1)) / nodeCount);
+    for (let i = 0; i < nodeCount; i += 1) {
+      const node = nodes[i];
+      const ny = area.y + i * (nodeH + gapY);
+      const color = palette[i % palette.length].replace("#", "");
+      slide.addShape("roundRect", {
+        x: area.x,
+        y: ny,
+        w: area.w,
+        h: nodeH,
+        fill: { color, transparency: 10 },
+        line: { color, transparency: 30 }
+      });
+      slide.addText(truncateText(node.label, 32), {
+        x: area.x + 0.08,
+        y: ny + 0.05,
+        w: area.w - 0.16,
+        h: nodeH - 0.08,
+        align: "center",
+        valign: "middle",
+        fontFace: "Calibri",
+        fontSize: 8,
+        bold: true,
+        color: STORY.card
+      });
+      if (i < nodeCount - 1) {
+        slide.addShape("line", {
+          x: area.x + area.w / 2,
+          y: ny + nodeH + 0.005,
+          w: 0.001,
+          h: 0.05,
+          line: { color: "94A3B8", pt: 1, transparency: 10 }
+        });
+      }
+    }
+    return;
+  }
+
+  const gapX = 0.08;
+  const nodeW = Math.max(0.48, (area.w - gapX * (nodeCount - 1)) / nodeCount);
+  for (let i = 0; i < nodeCount; i += 1) {
+    const node = nodes[i];
+    const nx = area.x + i * (nodeW + gapX);
+    const color = palette[i % palette.length].replace("#", "");
+    slide.addShape("roundRect", {
+      x: nx,
+      y: area.y,
+      w: nodeW,
+      h: area.h,
+      fill: { color, transparency: 10 },
+      line: { color, transparency: 30 }
+    });
+    slide.addText(truncateText(node.label, 32), {
+      x: nx + 0.06,
+      y: area.y + 0.05,
+      w: nodeW - 0.12,
+      h: area.h - 0.12,
+      align: "center",
+      valign: "middle",
+      fontFace: "Calibri",
+      fontSize: 8,
+      bold: true,
+      color: STORY.card
+    });
+    if (i < nodeCount - 1) {
+      slide.addShape("line", {
+        x: nx + nodeW + 0.01,
+        y: area.y + area.h / 2,
+        w: 0.05,
+        h: 0.001,
+        line: { color: "94A3B8", pt: 1, transparency: 10 }
+      });
+    }
+  }
+}
+
+function renderInfographicTechCard(
+  slide: PptxGenJS.Slide,
+  area: { x: number; y: number; w: number; h: number },
+  spec: InfographicTechnicalSpec
+) {
+  slide.addShape("roundRect", {
+    x: area.x,
+    y: area.y,
+    w: area.w,
+    h: area.h,
+    fill: { color: "ECFEFF" },
+    line: { color: "A5F3FC", width: 1 }
+  });
+
+  slide.addText("Especificacion tecnica de infografia", {
+    x: area.x + 0.18,
+    y: area.y + 0.1,
+    w: area.w - 0.36,
+    h: 0.22,
+    fontFace: "Calibri",
+    fontSize: 11,
+    bold: true,
+    color: STORY.ink
+  });
+
+  slide.addText(`Tema: ${truncateText(spec.topic, 70)}`, {
+    x: area.x + 0.18,
+    y: area.y + 0.32,
+    w: area.w - 0.36,
+    h: 0.2,
+    fontFace: "Calibri",
+    fontSize: 9,
+    color: STORY.muted
+  });
+
+  slide.addText(`Metafora: ${truncateText(spec.visualMetaphor, 76)}`, {
+    x: area.x + 0.18,
+    y: area.y + 0.52,
+    w: area.w - 0.36,
+    h: 0.25,
+    fontFace: "Calibri",
+    fontSize: 9,
+    color: STORY.muted
+  });
+  slide.addText(`Requiere infografia: ${spec.requiresInfographic ? "Si" : "No"}`, {
+    x: area.x + 0.18,
+    y: area.y + 0.72,
+    w: area.w - 0.36,
+    h: 0.16,
+    fontFace: "Calibri",
+    fontSize: 8,
+    color: STORY.muted
+  });
+
+  slide.addText("Estructura de datos", {
+    x: area.x + 0.18,
+    y: area.y + 0.9,
+    w: area.w * 0.46,
+    h: 0.2,
+    fontFace: "Calibri",
+    fontSize: 9,
+    bold: true,
+    color: STORY.ink
+  });
+  slide.addText(clampLines(spec.dataStructure, 4, 54).join("\n"), {
+    x: area.x + 0.18,
+    y: area.y + 1.1,
+    w: area.w * 0.46,
+    h: area.h - 1.35,
+    fontFace: "Calibri",
+    fontSize: 8,
+    color: STORY.muted,
+    bullet: true,
+    valign: "top"
+  });
+
+  slide.addText("Mermaid.js", {
+    x: area.x + area.w * 0.5,
+    y: area.y + 0.9,
+    w: area.w * 0.46,
+    h: 0.2,
+    fontFace: "Calibri",
+    fontSize: 9,
+    bold: true,
+    color: STORY.ink
+  });
+
+  const mermaidArea = {
+    x: area.x + area.w * 0.5,
+    y: area.y + 1.1,
+    w: area.w * 0.46,
+    h: area.h - 1.82
+  };
+  renderMermaidMiniDiagram(slide, mermaidArea, spec);
+
+  slide.addText(clampLines(spec.mermaidCode.split(/\r?\n/g), 2, 46).join(" "), {
+    x: area.x + area.w * 0.5,
+    y: area.y + area.h - 0.56,
+    w: area.w * 0.46,
+    h: 0.16,
+    fontFace: "Consolas",
+    fontSize: 6,
+    color: STORY.muted
+  });
+
+  slide.addText(`Iconografia: ${truncateText(spec.iconStyle, 40)}`, {
+    x: area.x + area.w * 0.5,
+    y: area.y + area.h - 0.38,
+    w: area.w * 0.46,
+    h: 0.18,
+    fontFace: "Calibri",
+    fontSize: 8,
+    color: STORY.muted
+  });
+
+  let colorX = area.x + 0.18;
+  for (const color of spec.palette.slice(0, 5)) {
+    slide.addShape("roundRect", {
+      x: colorX,
+      y: area.y + area.h - 0.42,
+      w: 0.38,
+      h: 0.22,
+      fill: { color: color.replace("#", "") },
+      line: { color: STORY.soft, width: 1 }
+    });
+    colorX += 0.45;
+  }
+}
+
 function renderInfographic(
   slide: PptxGenJS.Slide,
   area: { x: number; y: number; w: number; h: number },
@@ -526,8 +1140,7 @@ function renderInfographic(
     const gapY = 0.15;
     const cardW = (w - gapX * (cols - 1)) / cols;
     const cardH = (h - gapY * (rows - 1)) / rows;
-    const iconShapes = ["hexagon", "gear6", "lightningBolt", "diamond"] as const;
-    const shadow = { type: "outer", color: "000000", opacity: 0.12, blur: 10, offset: 2, angle: 45 } as const;
+    const iconShapes = ["hexagon", "ellipse", "diamond", "triangle"] as const;
 
     for (let i = 0; i < n; i += 1) {
       const item = spec.items[i];
@@ -543,7 +1156,7 @@ function renderInfographic(
         h: cardH,
         fill: { color: "F8FAFC" },
         line: { color: STORY.soft, width: 1 },
-        shadow
+        shadow: buildSoftShadow()
       });
 
       // Accent stripe + icon to reduce "flat" look.
@@ -594,7 +1207,6 @@ function renderInfographic(
     const n = Math.max(1, Math.min(spec.items.length, 4));
     const gapY = 0.12;
     const cardH = (h - gapY * (n - 1)) / n;
-    const shadow = { type: "outer", color: "000000", opacity: 0.12, blur: 10, offset: 2, angle: 45 } as const;
     for (let i = 0; i < n; i += 1) {
       const item = spec.items[i];
       const cy = y + i * (cardH + gapY);
@@ -605,7 +1217,7 @@ function renderInfographic(
         h: cardH,
         fill: { color: "F8FAFC" },
         line: { color: STORY.soft, width: 1 },
-        shadow
+        shadow: buildSoftShadow()
       });
       slide.addShape("rect", {
         x,
@@ -662,13 +1274,12 @@ function renderInfographic(
 
       // Connector arrow between steps.
       if (i < n - 1) {
-        slide.addShape("downArrow", {
-          x: x + w / 2 - 0.12,
+        slide.addShape("line", {
+          x: x + w / 2,
           y: cy + cardH + 0.01,
-          w: 0.24,
-          h: 0.18,
-          fill: { color: STORY.accent2, transparency: 35 },
-          line: { color: STORY.accent2, transparency: 60 }
+          w: 0.001,
+          h: 0.14,
+          line: { color: STORY.accent2, pt: 1.2, transparency: 30 }
         });
       }
     }
@@ -687,6 +1298,111 @@ function renderInfographic(
     valign: "top",
     bullet: true
   });
+}
+
+function renderNarrativeText(
+  slide: PptxGenJS.Slide,
+  area: { x: number; y: number; w: number; h: number },
+  lines: string[]
+) {
+  const summary = clampLines(lines, 7, 110);
+  slide.addShape("roundRect", {
+    x: area.x,
+    y: area.y,
+    w: area.w,
+    h: area.h,
+    fill: { color: "F8FAFC" },
+    line: { color: STORY.soft, width: 1 },
+    shadow: buildSoftShadow()
+  });
+  slide.addText(summary.join("\n"), {
+    x: area.x + 0.2,
+    y: area.y + 0.2,
+    w: area.w - 0.4,
+    h: area.h - 0.4,
+    fontFace: "Calibri",
+    fontSize: 12,
+    color: STORY.ink,
+    bullet: true,
+    valign: "top"
+  });
+}
+
+function renderComparison(
+  slide: PptxGenJS.Slide,
+  area: { x: number; y: number; w: number; h: number },
+  items: StoryVisualItem[]
+) {
+  const source = items.length ? items : [{ title: "Tema A", body: "" }, { title: "Tema B", body: "" }];
+  const cols = Math.min(3, Math.max(2, source.length));
+  const gap = 0.14;
+  const cardW = (area.w - gap * (cols - 1)) / cols;
+  const cardH = area.h;
+
+  for (let i = 0; i < cols; i += 1) {
+    const item = source[i];
+    const x = area.x + i * (cardW + gap);
+    slide.addShape("roundRect", {
+      x,
+      y: area.y,
+      w: cardW,
+      h: cardH,
+      fill: { color: "FFFFFF" },
+      line: { color: STORY.soft, width: 1 },
+      shadow: buildSoftShadow()
+    });
+    slide.addText(truncateText(item.title, 34), {
+      x: x + 0.14,
+      y: area.y + 0.12,
+      w: cardW - 0.28,
+      h: 0.24,
+      fontFace: "Calibri",
+      fontSize: 11,
+      bold: true,
+      color: STORY.ink
+    });
+    if (item.body?.trim()) {
+      slide.addText(truncateText(item.body, 180), {
+        x: x + 0.14,
+        y: area.y + 0.4,
+        w: cardW - 0.28,
+        h: cardH - 0.55,
+        fontFace: "Calibri",
+        fontSize: 10,
+        color: STORY.muted,
+        valign: "top"
+      });
+    }
+  }
+}
+
+function resolveVisualMode(
+  spec: StoryVisualSpec,
+  infographicSpec: InfographicTechnicalSpec,
+  contentLines: string[]
+): StoryVisualMode {
+  if (spec.visualMode !== "auto") {
+    return spec.visualMode;
+  }
+
+  const contentSize = contentLines.join(" ").trim().length;
+  const hasComparisonHints = contentLines.some((line) =>
+    /(versus|vs\.?|compar|diferencia|ventajas|desventajas)/i.test(line)
+  );
+  const hasStepHints = contentLines.some((line) =>
+    /(paso|proceso|etapa|fases|secuencia|timeline)/i.test(line)
+  );
+
+  if (infographicSpec.requiresInfographic || spec.layout === "timeline" || hasStepHints) {
+    return "infographic";
+  }
+  if (hasComparisonHints || spec.layout === "cards") {
+    return "comparison";
+  }
+  if (contentSize > 700) {
+    return "activity";
+  }
+  return "image_support";
 }
 
 function addOverlayButtons(
@@ -1216,6 +1932,32 @@ function addPopupSlide(pptx: PptxGenJS, params: {
   slide.addNotes(params.notes);
 }
 
+async function resolveVisualWithFallback(params: {
+  courseName: string;
+  primaryQuery: string;
+  topic: string;
+}): Promise<ResolvedVisual | null> {
+  const queries = [
+    params.primaryQuery.trim(),
+    `${params.primaryQuery.trim()} vector estilo freepik`,
+    `${params.topic.trim()} ilustracion educativa`,
+    "educacion digital ilustracion moderna"
+  ].filter(Boolean);
+
+  for (const query of queries) {
+    const visual = await resolveStoryboardVisual({
+      courseName: params.courseName,
+      term: query,
+      preferHorizontal: true
+    });
+    if (visual) {
+      return visual;
+    }
+  }
+
+  return null;
+}
+
 async function toPptxBufferStoryboard(
   output: InstructionalDesignOutput,
   options?: { courseName?: string }
@@ -1242,7 +1984,12 @@ async function toPptxBufferStoryboard(
     const visualSpecRaw = pickResourceByType(unit, "visual_spec");
     const visualSpec = parseVisualSpec(visualSpecRaw, { title: unit.title, content: unit.content_outline });
     const visualQuery = pickResourceByType(unit, "imagen_query")?.trim() || `${unit.title} ilustracion plana`;
-    return { unit, visualSpecRaw, visualSpec, visualQuery };
+    const infographicTechRaw = pickResourceByType(unit, "infografia_tecnica");
+    const infographicTech = parseInfographicTechnicalSpec(infographicTechRaw, {
+      topic: unit.title,
+      visual: visualSpec
+    });
+    return { unit, visualSpecRaw, visualSpec, visualQuery, infographicTechRaw, infographicTech };
   });
 
   const popupStart = mainSlideStart + unitCount;
@@ -1274,142 +2021,169 @@ async function toPptxBufferStoryboard(
   // Main slides (one per unit)
   const resolvedVisuals: Array<ResolvedVisual | null> = [];
   for (let idx = 0; idx < unitSpecs.length; idx += 1) {
-    const { unit, visualQuery, visualSpec, visualSpecRaw } = unitSpecs[idx];
+    const { unit, visualQuery, visualSpec, visualSpecRaw, infographicTech, infographicTechRaw } = unitSpecs[idx];
+    const master = masterForUnit(idx);
     const audioScript = pickResourceByType(unit, "guion_audio");
     const build = pickResourceByType(unit, "notas_construccion");
     const resources = otherResources(unit).map(formatResource);
     const interactivity = buildInteractivityLines(unit);
 
-    const visual = await resolveStoryboardVisual({ courseName, term: visualQuery, preferHorizontal: true });
+    const visual = await resolveVisualWithFallback({
+      courseName,
+      primaryQuery: visualQuery,
+      topic: unit.title
+    });
     resolvedVisuals.push(visual);
 
     const slide = pptx.addSlide();
     addStoryBackground(slide);
     const progress = `${idx + 1}/${unitCount}`;
-    addStoryTopBar(slide, { left: `${unit.unit_id} - ${unit.title}`, right: `${unit.unit_id} ${progress}` });
+    addStoryTopBar(slide, {
+      left: `${unit.unit_id} - ${unit.title} | Plantilla ${master.name}`,
+      right: `${unit.unit_id} ${progress}`
+    });
 
     // Left content card
     slide.addShape("roundRect", {
-      x: 0.7,
+      x: 0.55,
       y: 0.75,
-      w: 6.3,
-      h: 5.85,
+      w: 6.95,
+      h: 5.98,
       fill: { color: STORY.card },
       line: { color: STORY.soft, width: 1 }
     });
 
     slide.addText(truncateText(unit.title, 60), {
-      x: 1.0,
-      y: 0.95,
-      w: 5.8,
+      x: 0.85,
+      y: 0.93,
+      w: 6.4,
       h: 0.35,
       fontFace: "Calibri",
-      fontSize: 20,
+      fontSize: 18,
       bold: true,
       color: STORY.ink
     });
 
     slide.addText(truncateText(unit.purpose, 140), {
-      x: 1.0,
-      y: 1.32,
-      w: 5.8,
-      h: 0.45,
+      x: 0.85,
+      y: 1.28,
+      w: 6.4,
+      h: 0.55,
       fontFace: "Calibri",
-      fontSize: 11,
+      fontSize: 10,
       color: STORY.muted
     });
 
     slide.addText("En pantalla (estudiante)", {
-      x: 1.0,
-      y: 1.75,
-      w: 5.8,
+      x: 0.85,
+      y: 1.88,
+      w: 6.4,
       h: 0.25,
       fontFace: "Calibri",
       fontSize: 12,
       bold: true,
-      color: STORY.accent
+      color: master.accent
     });
 
-    renderInfographic(slide, { x: 1.0, y: 2.05, w: 5.8, h: 2.75 }, visualSpec);
+    const visualMode = resolveVisualMode(visualSpec, infographicTech, unit.content_outline);
+    if (visualMode === "comparison") {
+      renderComparison(slide, { x: 0.85, y: 2.15, w: 6.4, h: 3.3 }, visualSpec.items);
+    } else if (visualMode === "image_support" || visualMode === "activity") {
+      renderNarrativeText(slide, { x: 0.85, y: 2.15, w: 6.4, h: 3.3 }, unit.content_outline);
+    } else {
+      renderInfographic(slide, { x: 0.85, y: 2.15, w: 6.4, h: 3.3 }, visualSpec);
+    }
 
     // Interactivity card
     slide.addShape("roundRect", {
-      x: 1.0,
-      y: 4.95,
-      w: 5.8,
-      h: 1.55,
-      fill: { color: "ECFEFF" },
-      line: { color: "A5F3FC", width: 1 }
+      x: 0.85,
+      y: 5.58,
+      w: 6.4,
+      h: 1.06,
+      fill: { color: master.panelTint },
+      line: { color: master.panelBorder, width: 1 }
     });
     slide.addText("Interactividad", {
-      x: 1.2,
-      y: 5.08,
-      w: 5.4,
+      x: 1.05,
+      y: 5.68,
+      w: 6.0,
       h: 0.25,
       fontFace: "Calibri",
-      fontSize: 12,
-      bold: true,
-      color: STORY.ink
-    });
-    const interLines = clampLines(interactivity, 3, 110);
-    slide.addText(interLines.join("\n"), {
-      x: 1.2,
-      y: 5.35,
-      w: 5.4,
-      h: 1.1,
-      fontFace: "Calibri",
       fontSize: 11,
+      bold: true,
+      color: master.accent
+    });
+    const interLines = clampLines(interactivity, 2, 120);
+    slide.addText(interLines.join("\n"), {
+      x: 1.05,
+      y: 5.94,
+      w: 6.0,
+      h: 0.63,
+      fontFace: "Calibri",
+      fontSize: 10,
       color: STORY.muted,
       valign: "top",
       bullet: true
     });
 
-    // Right visual card
+    // Right visual card (image + technical infographic spec)
     slide.addShape("roundRect", {
-      x: 7.15,
+      x: 7.65,
       y: 0.75,
-      w: 5.48,
-      h: 5.85,
+      w: 4.98,
+      h: 5.98,
       fill: { color: STORY.card },
       line: { color: STORY.soft, width: 1 }
     });
+
+    const mediaArea = { x: 7.72, y: 0.83, w: 4.84, h: 3.45 };
+    const technicalArea = { x: 7.72, y: 4.33, w: 4.84, h: 2.32 };
+
     if (visual?.imagePath) {
       slide.addImage({
         path: visual.imagePath,
-        x: 7.2,
-        y: 0.8,
-        w: 5.38,
-        h: 5.75,
-        sizing: { type: "cover", w: 5.38, h: 5.75 }
+        x: mediaArea.x,
+        y: mediaArea.y,
+        w: mediaArea.w,
+        h: mediaArea.h,
+        sizing: { type: "cover", w: mediaArea.w, h: mediaArea.h }
       });
       if (visual.watermarkLabel) {
-        addVisualWatermark(slide, { x: 7.2, y: 0.8, w: 5.38, h: 5.75, label: visual.watermarkLabel });
+        addVisualWatermark(slide, {
+          x: mediaArea.x,
+          y: mediaArea.y,
+          w: mediaArea.w,
+          h: mediaArea.h,
+          label: visual.watermarkLabel
+        });
       }
     } else {
       slide.addShape("rect", {
-        x: 7.2,
-        y: 0.8,
-        w: 5.38,
-        h: 5.75,
+        x: mediaArea.x,
+        y: mediaArea.y,
+        w: mediaArea.w,
+        h: mediaArea.h,
         fill: { color: STORY.soft }
       });
       slide.addShape("ellipse", {
-        x: 9.1,
-        y: 2.1,
-        w: 1.9,
-        h: 1.9,
-        fill: { color: STORY.accent2, transparency: 80 },
-        line: { color: STORY.accent2, transparency: 100 }
+        x: 9.25,
+        y: 1.35,
+        w: 1.65,
+        h: 1.65,
+        fill: { color: master.accent2, transparency: 80 },
+        line: { color: master.accent2, transparency: 100 }
       });
       slide.addShape("ellipse", {
-        x: 8.1,
-        y: 3.4,
-        w: 2.6,
-        h: 2.6,
-        fill: { color: STORY.accent, transparency: 88 },
-        line: { color: STORY.accent, transparency: 100 }
+        x: 8.35,
+        y: 2.25,
+        w: 2.15,
+        h: 2.15,
+        fill: { color: master.accent, transparency: 88 },
+        line: { color: master.accent, transparency: 100 }
       });
     }
+
+    renderInfographicTechCard(slide, technicalArea, infographicTech);
 
     // Mock UI buttons/hotspots over the visual (Genially-style).
     if (visualSpec.buttons.length) {
@@ -1423,7 +2197,7 @@ async function toPptxBufferStoryboard(
         label,
         slide: popupByKey.get(normalizeKey(label))
       }));
-      addOverlayButtons(slide, { x: 7.35, y: 6.18, w: 5.08 }, overlayButtons);
+      addOverlayButtons(slide, { x: 7.9, y: 3.82, w: 4.45 }, overlayButtons);
     }
 
     // Footer: navigation + resource chips
@@ -1477,6 +2251,7 @@ async function toPptxBufferStoryboard(
       visualQuery,
       visualAttribution: visual?.attributionLines ?? [],
       visualSpecRaw,
+      infographicTechRaw,
       extraResources: resources
     });
     slide.addNotes(notes);
@@ -1484,7 +2259,7 @@ async function toPptxBufferStoryboard(
 
   // Popup slides (simulated interactivity)
   for (let idx = 0; idx < unitSpecs.length; idx += 1) {
-    const { unit, visualSpec, visualQuery, visualSpecRaw } = unitSpecs[idx];
+    const { unit, visualSpec, visualQuery, visualSpecRaw, infographicTechRaw } = unitSpecs[idx];
     const popups = visualSpec.popups.slice(0, 3);
     if (!popups.length) continue;
 
@@ -1506,6 +2281,7 @@ async function toPptxBufferStoryboard(
       visualQuery,
       visualAttribution: visual?.attributionLines ?? [],
       visualSpecRaw,
+      infographicTechRaw,
       extraResources: resources
     });
 

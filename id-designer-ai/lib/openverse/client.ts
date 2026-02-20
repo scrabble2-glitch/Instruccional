@@ -7,9 +7,52 @@ export interface OpenverseImageCandidate {
   license?: string;
   licenseUrl?: string;
   provider?: string;
+  licenseRisk?: "low" | "review";
+  licensePolicyNote?: string;
 }
 
 const OPENVERSE_BASE_URL = "https://api.openverse.engineering/v1/images/";
+
+function classifyLicense(licenseRaw: string): { risk: "low" | "review"; note: string; score: number } {
+  const license = (licenseRaw ?? "").toLowerCase().trim();
+  if (!license) {
+    return {
+      risk: "review",
+      note: "Licencia no informada: requiere validación manual antes de uso final.",
+      score: -25
+    };
+  }
+
+  if (license === "cc0" || license.includes("pdm")) {
+    return { risk: "low", note: "Licencia abierta/permisiva.", score: 32 };
+  }
+
+  if (license.includes("by-sa") || license.includes("by")) {
+    return { risk: "low", note: "Licencia permisiva con atribución obligatoria.", score: 14 };
+  }
+
+  if (license.includes("nc")) {
+    return {
+      risk: "review",
+      note: "Licencia con restricción no comercial: validar alcance de uso.",
+      score: -18
+    };
+  }
+
+  if (license.includes("nd")) {
+    return {
+      risk: "review",
+      note: "Licencia sin obras derivadas: puede limitar edición/adaptación.",
+      score: -22
+    };
+  }
+
+  return {
+    risk: "review",
+    note: "Licencia no estándar: requiere revisión editorial/legal.",
+    score: -12
+  };
+}
 
 function scoreResult(result: any, preferHorizontal: boolean): number {
   const url = String(result?.url ?? "");
@@ -33,9 +76,8 @@ function scoreResult(result: any, preferHorizontal: boolean): number {
   }
 
   // Prefer permissive licenses for dev previews.
-  if (license === "cc0") score += 30;
-  if (license.includes("pdm")) score += 25;
-  if (license.includes("by")) score += 10;
+  const licensePolicy = classifyLicense(license);
+  score += licensePolicy.score;
 
   if (provider.includes("wikimedia")) score += 5;
   if (provider.includes("flickr")) score += 2;
@@ -93,6 +135,8 @@ export async function searchOpenverseImage(params: {
         : null;
 
   const licenseUrl = typeof best?.license_url === "string" ? best.license_url : undefined;
+  const license = typeof best?.license === "string" ? best.license : undefined;
+  const licensePolicy = classifyLicense(license ?? "");
 
   return {
     id: String(best?.id ?? "unknown"),
@@ -100,9 +144,10 @@ export async function searchOpenverseImage(params: {
     pageUrl,
     imageUrl,
     creator: typeof best?.creator === "string" ? best.creator : undefined,
-    license: typeof best?.license === "string" ? best.license : undefined,
+    license,
     licenseUrl,
-    provider: typeof best?.provider === "string" ? best.provider : undefined
+    provider: typeof best?.provider === "string" ? best.provider : undefined,
+    licenseRisk: licensePolicy.risk,
+    licensePolicyNote: licensePolicy.note
   };
 }
-

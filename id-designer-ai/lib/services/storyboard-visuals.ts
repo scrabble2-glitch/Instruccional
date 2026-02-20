@@ -9,6 +9,7 @@ export interface ResolvedVisual {
   attributionLines: string[];
   watermarkLabel?: string;
   provider?: string;
+  licenseRisk?: "low" | "review";
 }
 
 function sha256Short(value: string): string {
@@ -18,9 +19,13 @@ function sha256Short(value: string): string {
 function contentTypeToExt(contentType: string | null): string {
   const ct = (contentType ?? "").toLowerCase();
   if (ct.includes("image/png")) return ".png";
-  if (ct.includes("image/webp")) return ".webp";
   if (ct.includes("image/jpeg") || ct.includes("image/jpg")) return ".jpg";
   return ".img";
+}
+
+function isPptxSafeImageContentType(contentType: string | null): boolean {
+  const ct = (contentType ?? "").toLowerCase();
+  return ct.includes("image/png") || ct.includes("image/jpeg") || ct.includes("image/jpg");
 }
 
 async function pathExists(filePath: string): Promise<boolean> {
@@ -86,7 +91,8 @@ export async function resolveStoryboardVisual(params: {
               : [];
             const watermarkLabel = typeof meta?.watermarkLabel === "string" ? meta.watermarkLabel : undefined;
             const provider = typeof meta?.provider === "string" ? meta.provider : undefined;
-            return { imagePath, attributionLines, watermarkLabel, provider };
+            const licenseRisk = meta?.licenseRisk === "review" ? "review" : meta?.licenseRisk === "low" ? "low" : undefined;
+            return { imagePath, attributionLines, watermarkLabel, provider, licenseRisk };
           }
         } catch {
           // If meta is corrupted, ignore and refetch.
@@ -100,6 +106,7 @@ export async function resolveStoryboardVisual(params: {
 
       const imageRes = await fetch(imageUrl, { method: "GET" });
       if (!imageRes.ok) return null;
+      if (!isPptxSafeImageContentType(imageRes.headers.get("content-type"))) return null;
 
       const arrayBuffer = await imageRes.arrayBuffer();
       const ext = contentTypeToExt(imageRes.headers.get("content-type"));
@@ -110,7 +117,8 @@ export async function resolveStoryboardVisual(params: {
 
       const attributionLines: string[] = [];
       const provider: string = "openverse";
-      const watermarkLabel: string | undefined = "PREVISUALIZACION";
+      const licenseRisk = openverse?.licenseRisk ?? "review";
+      const watermarkLabel: string | undefined = licenseRisk === "review" ? "REVISION LICENCIA" : "PREVISUALIZACION";
 
       attributionLines.push(`Imagen: ${openverse?.title ?? "N/D"}`);
       attributionLines.push(`Fuente: ${openverse?.pageUrl ?? openverse?.imageUrl ?? "N/D"}`);
@@ -118,6 +126,10 @@ export async function resolveStoryboardVisual(params: {
       if (openverse?.license) attributionLines.push(`Licencia: ${openverse.license}`);
       if (openverse?.licenseUrl) attributionLines.push(`Licencia URL: ${openverse.licenseUrl}`);
       if (openverse?.provider) attributionLines.push(`Proveedor: ${openverse.provider}`);
+      if (openverse?.licensePolicyNote) attributionLines.push(`Política licencia: ${openverse.licensePolicyNote}`);
+      if (licenseRisk === "review") {
+        attributionLines.push("Acción: validar licencia y atribución antes de publicar (uso educativo/comercial).");
+      }
 
       await fs.writeFile(
         metaPath,
@@ -131,7 +143,8 @@ export async function resolveStoryboardVisual(params: {
             pageUrl: openverse?.pageUrl ?? null,
             imageUrl,
             attributionLines,
-            watermarkLabel
+            watermarkLabel,
+            licenseRisk
           },
           null,
           2
@@ -139,7 +152,7 @@ export async function resolveStoryboardVisual(params: {
         "utf8"
       );
 
-      return { imagePath, attributionLines, watermarkLabel, provider };
+      return { imagePath, attributionLines, watermarkLabel, provider, licenseRisk };
     } catch {
       // Best-effort: never break PPTX generation on visuals.
       return null;

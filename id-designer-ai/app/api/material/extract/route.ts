@@ -1,8 +1,9 @@
 import { ZodError, z } from "zod";
 import { isAuthenticated } from "@/lib/auth/session";
 import { applyRateLimit } from "@/lib/cache/rate-limit";
+import { resolveBaseMaterialMaxBytes } from "@/lib/constants/base-material";
 import { env } from "@/lib/env";
-import { BASE_MATERIAL_MAX_BYTES, BASE_MATERIAL_MAX_CHARS, extractBaseMaterialText } from "@/lib/services/base-material-extract";
+import { BASE_MATERIAL_MAX_CHARS, extractBaseMaterialText } from "@/lib/services/base-material-extract";
 import { getClientIp, getRequestId, jsonResponse } from "@/lib/utils/request";
 import { sanitizeMultilineText, sanitizeOptionalText } from "@/lib/utils/sanitize";
 
@@ -24,6 +25,17 @@ const ResponseSchema = z
 
 function formatZodError(error: ZodError): string[] {
   return error.issues.map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`);
+}
+
+function formatBytesToMb(bytes: number): string {
+  return `${(bytes / 1_000_000).toFixed(0)} MB`;
+}
+
+function parseGeminiStatus(message: string): number | null {
+  const match = message.match(/Gemini error \((\d+)\):/i);
+  if (!match) return null;
+  const status = Number(match[1]);
+  return Number.isFinite(status) ? status : null;
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -67,11 +79,12 @@ export async function POST(request: Request): Promise<Response> {
 
   const filename = sanitizeOptionalText(entry.name) ?? "material-base";
   const mimeType = sanitizeOptionalText(entry.type) ?? "application/octet-stream";
+  const maxBytes = resolveBaseMaterialMaxBytes(filename, mimeType);
 
-  if (entry.size > BASE_MATERIAL_MAX_BYTES) {
+  if (entry.size > maxBytes) {
     return jsonResponse(
       {
-        error: `Archivo demasiado grande. Máximo ${Math.round(BASE_MATERIAL_MAX_BYTES / 1000)} KB.`,
+        error: `Archivo demasiado grande. Máximo ${formatBytesToMb(maxBytes)} para este tipo de archivo.`,
         requestId
       },
       413,
@@ -122,6 +135,8 @@ export async function POST(request: Request): Promise<Response> {
     });
   } catch (error) {
     const rawMessage = error instanceof Error ? error.message : "Error desconocido";
+    const rawLower = rawMessage.toLowerCase();
+    const geminiStatus = parseGeminiStatus(rawMessage);
     const publicMessage = rawMessage.includes("GEMINI_API_KEY")
       ? rawMessage
       : rawMessage === "NO_TEXT_EXTRACTED"
@@ -129,6 +144,27 @@ export async function POST(request: Request): Promise<Response> {
           "Intenta con otro documento, pega el contenido manualmente o convierte el recurso a texto."
       : rawMessage === "Formato no soportado."
         ? "Formato no soportado. Usa PDF, DOCX, PPTX, texto (.txt/.md/.json) o imágenes (PNG/JPG/WEBP)."
+      : geminiStatus === 401 || geminiStatus === 403
+        ? "La conexión con Gemini fue rechazada (API key inválida o sin permisos). " +
+          "Verifica GEMINI_API_KEY y los permisos del proyecto en Google AI Studio."
+      : geminiStatus === 404
+        ? "El modelo configurado no está disponible para esta cuenta/proyecto. " +
+          "Cambia GEMINI_MODEL a gemini-2.5-pro o habilita acceso al modelo actual."
+      : geminiStatus === 429
+        ? "Gemini reportó límite de cuota o rate limit. Espera unos minutos o revisa la cuota del proyecto."
+      : geminiStatus === 400
+        ? "Gemini no pudo procesar este archivo (tipo o tamaño no compatible para extracción directa). " +
+          "Intenta exportarlo a PDF de texto o dividir el recurso."
+      : rawLower.includes("gemini error")
+        ? "No fue posible extraer texto automáticamente con IA para este archivo. " +
+          "Intenta exportarlo a PDF de texto o pega el contenido manualmente."
+      : rawLower.includes("corrupt")
+        || rawLower.includes("malformed")
+        || rawLower.includes("zip")
+        || rawLower.includes("central directory")
+        || rawLower.includes("end of data")
+        ? "El archivo parece dañado, protegido o con una estructura no compatible. " +
+          "Intenta abrirlo y volver a guardarlo como PPTX/DOCX/PDF, luego cárgalo de nuevo."
         : "No fue posible extraer texto del archivo. Intenta con otro documento o pega el contenido manualmente.";
 
     console.error(

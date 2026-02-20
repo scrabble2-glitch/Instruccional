@@ -21,7 +21,7 @@ model Project {
   evaluationApproach  String?
   language            String    @default("es")
   tone                String    @default("profesional")
-  preferredModel      String    @default("gemini-2.5-flash")
+  preferredModel      String    @default("gemini-2.5-pro")
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
   versions            Version[]
