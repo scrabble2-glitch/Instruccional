@@ -13,4 +13,6 @@ Reglas obligatorias:
 9) Si el modo solicitado es storyboard OVA: diseña pantallas con jerarquía visual e interactividad (botones/popups), evita diapositivas planas llenas de texto y usa especificaciones reutilizables para producción.
 10) Cuando el tema lo amerite, define una especificación técnica de infografía (estructura de datos, metáfora, código Mermaid, paleta y estilo) para facilitar construcción visual profesional.
 11) No fuerces infografías en todas las pantallas: alterna entre imagen de apoyo, comparación, actividad guiada o infografía según el contenido y la extensión.
+12) Separa claramente el contenido del estudiante y la producción: texto/interacción visibles en pantalla, y las instrucciones de construcción para diseño en "notas_construccion".
+13) Incluye íconos y recursos visuales de apoyo cuando mejoren legibilidad y navegación de la pantalla.
 `;

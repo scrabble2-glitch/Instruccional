@@ -79,18 +79,24 @@ Instrucciones de guardrail:
 - Si el modo es "guion técnico instruccional (storyboard de OVA)":
   - Interpreta course_structure como una secuencia de pantallas/escenas. Cada item representa 1 pantalla (o 1 pantalla por parte si es muy extensa).
   - La presentación debe quedar lista para producción: texto en pantalla + interactividad + guion de audio + notas de construcción.
+  - Organiza cada pantalla con criterio profesional:
+    - 45-60% del área para contenido textual del estudiante.
+    - 40-55% para visuales (imagen, íconos, infografía o actividad).
+    - Evita bloques largos: máximo 6 bullets, frases cortas y jerarquía visual clara.
   - Usa estos campos por pantalla:
     - content_outline: SOLO texto visible para estudiantes (títulos, bullets, mensajes, copy). No incluyas aquí notas de construcción.
       Reglas de estilo: máximo 6 bullets; evita párrafos largos; si el material base es extenso, divide en pantallas consecutivas.
+      Debe incluir explícitamente una sección breve "Interacción del estudiante" (1-3 bullets accionables).
     - learning_activities: describe la interactividad como instrucciones para estudiantes (qué hacer y qué ocurre: botones, check de navegación, pop-ups, drag and drop, preguntas, feedback).
     - assessment: usa para checks de aprendizaje (preguntas, ejercicios evaluables) con evidencia y rúbrica simple.
     - resources: incluye placeholders de recursos multimedia (iconos/imagenes/infografías/video). NO inventes links reales.
-      Además, agrega obligatoriamente 4 recursos especiales por pantalla (sin links reales):
+      Además, agrega obligatoriamente 6 recursos especiales por pantalla (sin links reales):
       1) { type: "guion_audio", title: "<guion completo de narración para esa pantalla>", link_optional: "" }
       2) { type: "notas_construccion", title: "<instrucciones de construcción (capas, botones, estados, triggers, navegación) + textos emergentes si aplica>", link_optional: "" }
       3) { type: "imagen_query", title: "<término de búsqueda para banco de imágenes (3-8 palabras) + estilo visual sugerido (ej. 'ilustración plana', 'foto realista', 'vector estilo freepik')>", link_optional: "" }
-      4) { type: "visual_spec", title: "<especificación visual de la infografía y componentes UI en formato texto>", link_optional: "" }
-      5) { type: "infografia_tecnica", title: "<especificación técnica de infografía (estructura de datos, metáfora visual, mermaid, paleta y estilo)>", link_optional: "" }
+      4) { type: "icon_query", title: "<búsqueda de íconos para la pantalla (3-6 palabras) + estilo de iconografía>", link_optional: "" }
+      5) { type: "visual_spec", title: "<especificación visual de la infografía y componentes UI en formato texto>", link_optional: "" }
+      6) { type: "infografia_tecnica", title: "<especificación técnica de infografía (estructura de datos, metáfora visual, mermaid, paleta y estilo)>", link_optional: "" }
 
       Formato requerido para "visual_spec" (texto, NO JSON), ejemplo:
       layout: process_steps
@@ -112,6 +118,8 @@ Instrucciones de guardrail:
       - popups: si defines buttons, define también popups (1 por botón) con el texto emergente que verá el estudiante.
       - No incluyas links.
       - Piensa en estilo "Genially": poco texto, jerarquía visual, tarjetas, íconos, y acciones claras (botones + popups).
+      - Incluye al menos un componente visual principal por pantalla (imagen de apoyo, comparación, actividad visual o infografía), no solo texto.
+      - Las indicaciones técnicas para diseñador NO van en content_outline: deben ir en notas_construccion.
       - NO uses solo infografías para todo. Elige visual_mode según tema y extensión:
         - image_support: temas introductorios o narrativos
         - comparison: cuando hay contraste/diferencias/ventajas
@@ -183,12 +191,14 @@ Reglas:
 4) Además, incluye un recurso:
    - { type: "imagen_query", title: "<término de búsqueda para banco de imágenes (3-8 palabras) + estilo visual>", link_optional: "" }
 5) Además, incluye un recurso:
+   - { type: "icon_query", title: "<búsqueda de íconos (3-6 palabras) + estilo de iconografía>", link_optional: "" }
+6) Además, incluye un recurso:
    - { type: "visual_spec", title: "<layout + visual_mode + items + buttons + popups (formato texto; NO JSON)>", link_optional: "" }
    - Si defines buttons en visual_spec, define popups (1 por botón) con el texto emergente.
-6) Además, incluye un recurso:
+7) Además, incluye un recurso:
    - { type: "infografia_tecnica", title: "<tema + requiere_infografia + estructura_datos + metafora_visual + codigo_mermaid + paleta_colores + estilo_iconografia>", link_optional: "" }
-7) No inventes links reales.
-8) Formato mínimo de infografia_tecnica (texto):
+8) No inventes links reales.
+9) Formato mínimo de infografia_tecnica (texto):
    tema: ...
    requiere_infografia: si|no
    estructura_datos:

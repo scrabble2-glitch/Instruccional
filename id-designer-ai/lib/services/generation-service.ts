@@ -110,6 +110,9 @@ function storyboardCompletenessIssues(output: InstructionalDesignOutput): string
     const imageQuery = unit.resources.find(
       (resource) => normalizeKey(resource.type) === "imagen_query" && resource.title.trim().length >= 8
     );
+    const iconQuery = unit.resources.find(
+      (resource) => normalizeKey(resource.type) === "icon_query" && resource.title.trim().length >= 6
+    );
     const visualSpec = unit.resources.find(
       (resource) => normalizeKey(resource.type) === "visual_spec" && resource.title.trim().length >= 40
     );
@@ -138,6 +141,9 @@ function storyboardCompletenessIssues(output: InstructionalDesignOutput): string
     }
     if (!imageQuery) {
       issues.push(`${unit.unit_id}: falta resource type "imagen_query" (término de búsqueda para visual).`);
+    }
+    if (!iconQuery) {
+      issues.push(`${unit.unit_id}: falta resource type "icon_query" (término de búsqueda para íconos de apoyo).`);
     }
     if (!visualSpec) {
       issues.push(`${unit.unit_id}: falta resource type "visual_spec" (especificación visual para infografía/UI).`);

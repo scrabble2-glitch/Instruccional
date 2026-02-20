@@ -94,9 +94,11 @@ function toVisualPolicyMarkdown(output: InstructionalDesignOutput): string {
   lines.push("## Consultas visuales por pantalla");
   for (const unit of output.course_structure) {
     const query = pickResourceTitle(unit.resources, "imagen_query");
+    const iconQuery = pickResourceTitle(unit.resources, "icon_query");
     const infographicTech = pickResourceTitle(unit.resources, "infografia_tecnica");
     lines.push(`### ${unit.unit_id} - ${unit.title}`);
     lines.push(`- Query sugerida: ${query}`);
+    lines.push(`- Query de íconos: ${iconQuery}`);
     lines.push(`- Infografía técnica: ${infographicTech}`);
     lines.push("");
   }

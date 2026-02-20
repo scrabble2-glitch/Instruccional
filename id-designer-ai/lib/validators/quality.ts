@@ -43,6 +43,7 @@ function detectStoryboardMode(output: InstructionalDesignOutput, mode?: Generati
     "guion_audio",
     "notas_construccion",
     "imagen_query",
+    "icon_query",
     "visual_spec",
     "infografia_tecnica"
   ]);
@@ -177,6 +178,7 @@ export function evaluateInstructionalQuality(
       "guion_audio",
       "notas_construccion",
       "imagen_query",
+      "icon_query",
       "visual_spec",
       "infografia_tecnica"
     ];
@@ -206,7 +208,7 @@ export function evaluateInstructionalQuality(
       const detail = `Pantallas incompletas: ${missingByUnit.join("; ")}.`;
       issues.push(detail);
       fixSuggestions.push(
-        "Regenera o edita las pantallas incompletas para incluir guion de audio, notas de construcción, imagen_query, visual_spec e infografia_tecnica."
+        "Regenera o edita las pantallas incompletas para incluir guion de audio, notas de construcción, imagen_query, icon_query, visual_spec e infografia_tecnica."
       );
       items.push({
         id: "storyboard_completeness",

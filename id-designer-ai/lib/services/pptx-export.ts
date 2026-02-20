@@ -181,6 +181,7 @@ function otherResources(unit: CourseUnit): CourseUnit["resources"] {
       key !== "guion_audio" &&
       key !== "notas_construccion" &&
       key !== "imagen_query" &&
+      key !== "icon_query" &&
       key !== "visual_spec" &&
       key !== "infografia_tecnica"
     );
@@ -196,6 +197,8 @@ function buildNotes(params: {
   interactivity: string[];
   visualQuery: string | null;
   visualAttribution: string[];
+  iconQuery: string | null;
+  iconAttribution: string[];
   visualSpecRaw: string | null;
   infographicTechRaw: string | null;
   extraResources: string[];
@@ -229,6 +232,15 @@ function buildNotes(params: {
     for (const line of params.visualAttribution) lines.push(safeLine(line));
   } else {
     lines.push("(Sin imagen incrustada: revisa el término de búsqueda y tu conexión a internet.)");
+  }
+  lines.push("");
+
+  lines.push("ICONOGRAFIA (auto):");
+  lines.push(`Query: ${params.iconQuery?.trim() ? safeLine(params.iconQuery) : "N/D (se usó fallback automático)"}`);
+  if (params.iconAttribution.length) {
+    for (const line of params.iconAttribution) lines.push(safeLine(line));
+  } else {
+    lines.push("(Sin ícono incrustado: revisar icon_query y disponibilidad del proveedor.)");
   }
   lines.push("");
 
@@ -952,135 +964,6 @@ function renderMermaidMiniDiagram(
   }
 }
 
-function renderInfographicTechCard(
-  slide: PptxGenJS.Slide,
-  area: { x: number; y: number; w: number; h: number },
-  spec: InfographicTechnicalSpec
-) {
-  slide.addShape("roundRect", {
-    x: area.x,
-    y: area.y,
-    w: area.w,
-    h: area.h,
-    fill: { color: "ECFEFF" },
-    line: { color: "A5F3FC", width: 1 }
-  });
-
-  slide.addText("Especificacion tecnica de infografia", {
-    x: area.x + 0.18,
-    y: area.y + 0.1,
-    w: area.w - 0.36,
-    h: 0.22,
-    fontFace: "Calibri",
-    fontSize: 11,
-    bold: true,
-    color: STORY.ink
-  });
-
-  slide.addText(`Tema: ${truncateText(spec.topic, 70)}`, {
-    x: area.x + 0.18,
-    y: area.y + 0.32,
-    w: area.w - 0.36,
-    h: 0.2,
-    fontFace: "Calibri",
-    fontSize: 9,
-    color: STORY.muted
-  });
-
-  slide.addText(`Metafora: ${truncateText(spec.visualMetaphor, 76)}`, {
-    x: area.x + 0.18,
-    y: area.y + 0.52,
-    w: area.w - 0.36,
-    h: 0.25,
-    fontFace: "Calibri",
-    fontSize: 9,
-    color: STORY.muted
-  });
-  slide.addText(`Requiere infografia: ${spec.requiresInfographic ? "Si" : "No"}`, {
-    x: area.x + 0.18,
-    y: area.y + 0.72,
-    w: area.w - 0.36,
-    h: 0.16,
-    fontFace: "Calibri",
-    fontSize: 8,
-    color: STORY.muted
-  });
-
-  slide.addText("Estructura de datos", {
-    x: area.x + 0.18,
-    y: area.y + 0.9,
-    w: area.w * 0.46,
-    h: 0.2,
-    fontFace: "Calibri",
-    fontSize: 9,
-    bold: true,
-    color: STORY.ink
-  });
-  slide.addText(clampLines(spec.dataStructure, 4, 54).join("\n"), {
-    x: area.x + 0.18,
-    y: area.y + 1.1,
-    w: area.w * 0.46,
-    h: area.h - 1.35,
-    fontFace: "Calibri",
-    fontSize: 8,
-    color: STORY.muted,
-    bullet: true,
-    valign: "top"
-  });
-
-  slide.addText("Mermaid.js", {
-    x: area.x + area.w * 0.5,
-    y: area.y + 0.9,
-    w: area.w * 0.46,
-    h: 0.2,
-    fontFace: "Calibri",
-    fontSize: 9,
-    bold: true,
-    color: STORY.ink
-  });
-
-  const mermaidArea = {
-    x: area.x + area.w * 0.5,
-    y: area.y + 1.1,
-    w: area.w * 0.46,
-    h: area.h - 1.82
-  };
-  renderMermaidMiniDiagram(slide, mermaidArea, spec);
-
-  slide.addText(clampLines(spec.mermaidCode.split(/\r?\n/g), 2, 46).join(" "), {
-    x: area.x + area.w * 0.5,
-    y: area.y + area.h - 0.56,
-    w: area.w * 0.46,
-    h: 0.16,
-    fontFace: "Consolas",
-    fontSize: 6,
-    color: STORY.muted
-  });
-
-  slide.addText(`Iconografia: ${truncateText(spec.iconStyle, 40)}`, {
-    x: area.x + area.w * 0.5,
-    y: area.y + area.h - 0.38,
-    w: area.w * 0.46,
-    h: 0.18,
-    fontFace: "Calibri",
-    fontSize: 8,
-    color: STORY.muted
-  });
-
-  let colorX = area.x + 0.18;
-  for (const color of spec.palette.slice(0, 5)) {
-    slide.addShape("roundRect", {
-      x: colorX,
-      y: area.y + area.h - 0.42,
-      w: 0.38,
-      h: 0.22,
-      fill: { color: color.replace("#", "") },
-      line: { color: STORY.soft, width: 1 }
-    });
-    colorX += 0.45;
-  }
-}
-
 function renderInfographic(
   slide: PptxGenJS.Slide,
   area: { x: number; y: number; w: number; h: number },
@@ -1374,6 +1257,119 @@ function renderComparison(
       });
     }
   }
+}
+
+function renderActivityCanvas(
+  slide: PptxGenJS.Slide,
+  area: { x: number; y: number; w: number; h: number },
+  interactivityLines: string[],
+  specItems: StoryVisualItem[]
+) {
+  const baseLines = interactivityLines.length
+    ? interactivityLines
+    : specItems.map((item) => `${item.title}${item.body ? `: ${item.body}` : ""}`);
+  const lines = clampLines(baseLines, 4, 90);
+
+  slide.addShape("roundRect", {
+    x: area.x,
+    y: area.y,
+    w: area.w,
+    h: area.h,
+    fill: { color: "FFFFFF" },
+    line: { color: STORY.soft, width: 1 },
+    shadow: buildSoftShadow()
+  });
+
+  slide.addText("Actividad guiada", {
+    x: area.x + 0.18,
+    y: area.y + 0.12,
+    w: area.w - 0.36,
+    h: 0.22,
+    fontFace: "Calibri",
+    fontSize: 11,
+    bold: true,
+    color: STORY.ink
+  });
+
+  const rowH = Math.max(0.32, (area.h - 0.52) / Math.max(1, lines.length));
+  for (let i = 0; i < lines.length; i += 1) {
+    const y = area.y + 0.38 + i * rowH;
+    slide.addShape("ellipse", {
+      x: area.x + 0.18,
+      y: y + 0.03,
+      w: 0.16,
+      h: 0.16,
+      fill: { color: i % 2 === 0 ? STORY.accent : STORY.accent2 },
+      line: { color: i % 2 === 0 ? STORY.accent : STORY.accent2 }
+    });
+    slide.addText(String(i + 1), {
+      x: area.x + 0.18,
+      y: y + 0.035,
+      w: 0.16,
+      h: 0.145,
+      align: "center",
+      valign: "middle",
+      fontFace: "Calibri",
+      fontSize: 7,
+      bold: true,
+      color: STORY.card
+    });
+    slide.addText(lines[i], {
+      x: area.x + 0.4,
+      y,
+      w: area.w - 0.56,
+      h: rowH - 0.02,
+      fontFace: "Calibri",
+      fontSize: 9,
+      color: STORY.muted,
+      valign: "top"
+    });
+  }
+}
+
+function addIconMarker(slide: PptxGenJS.Slide, params: { x: number; y: number; size: number; icon: ResolvedVisual | null }) {
+  slide.addShape("roundRect", {
+    x: params.x,
+    y: params.y,
+    w: params.size,
+    h: params.size,
+    fill: { color: "FFFFFF" },
+    line: { color: STORY.soft, width: 1 },
+    shadow: buildSoftShadow()
+  });
+
+  if (params.icon?.imagePath) {
+    slide.addImage({
+      path: params.icon.imagePath,
+      x: params.x + 0.05,
+      y: params.y + 0.05,
+      w: params.size - 0.1,
+      h: params.size - 0.1,
+      sizing: { type: "contain", w: params.size - 0.1, h: params.size - 0.1 }
+    });
+    return;
+  }
+
+  slide.addShape("ellipse", {
+    x: params.x + 0.15,
+    y: params.y + 0.15,
+    w: params.size - 0.3,
+    h: params.size - 0.3,
+    fill: { color: STORY.accent2, transparency: 50 },
+    line: { color: STORY.accent2, transparency: 25 }
+  });
+  slide.addText("i", {
+    x: params.x + 0.15,
+    y: params.y + 0.18,
+    w: params.size - 0.3,
+    h: params.size - 0.34,
+    align: "center",
+    valign: "middle",
+    fontFace: "Calibri",
+    fontSize: 18,
+    bold: true,
+    color: STORY.ink
+  });
 }
 
 function resolveVisualMode(
@@ -1958,6 +1954,32 @@ async function resolveVisualWithFallback(params: {
   return null;
 }
 
+async function resolveIconWithFallback(params: {
+  courseName: string;
+  primaryQuery: string;
+  topic: string;
+}): Promise<ResolvedVisual | null> {
+  const queries = [
+    params.primaryQuery.trim(),
+    `${params.topic.trim()} icono lineal`,
+    `${params.topic.trim()} icon vector`,
+    "educacion iconos lineales"
+  ].filter(Boolean);
+
+  for (const query of queries) {
+    const visual = await resolveStoryboardVisual({
+      courseName: params.courseName,
+      term: query,
+      preferHorizontal: false
+    });
+    if (visual) {
+      return visual;
+    }
+  }
+
+  return null;
+}
+
 async function toPptxBufferStoryboard(
   output: InstructionalDesignOutput,
   options?: { courseName?: string }
@@ -1984,12 +2006,13 @@ async function toPptxBufferStoryboard(
     const visualSpecRaw = pickResourceByType(unit, "visual_spec");
     const visualSpec = parseVisualSpec(visualSpecRaw, { title: unit.title, content: unit.content_outline });
     const visualQuery = pickResourceByType(unit, "imagen_query")?.trim() || `${unit.title} ilustracion plana`;
+    const iconQuery = pickResourceByType(unit, "icon_query")?.trim() || `${unit.title} icono lineal educativo`;
     const infographicTechRaw = pickResourceByType(unit, "infografia_tecnica");
     const infographicTech = parseInfographicTechnicalSpec(infographicTechRaw, {
       topic: unit.title,
       visual: visualSpec
     });
-    return { unit, visualSpecRaw, visualSpec, visualQuery, infographicTechRaw, infographicTech };
+    return { unit, visualSpecRaw, visualSpec, visualQuery, iconQuery, infographicTechRaw, infographicTech };
   });
 
   const popupStart = mainSlideStart + unitCount;
@@ -2020,8 +2043,9 @@ async function toPptxBufferStoryboard(
 
   // Main slides (one per unit)
   const resolvedVisuals: Array<ResolvedVisual | null> = [];
+  const resolvedIcons: Array<ResolvedVisual | null> = [];
   for (let idx = 0; idx < unitSpecs.length; idx += 1) {
-    const { unit, visualQuery, visualSpec, visualSpecRaw, infographicTech, infographicTechRaw } = unitSpecs[idx];
+    const { unit, visualQuery, iconQuery, visualSpec, visualSpecRaw, infographicTech, infographicTechRaw } = unitSpecs[idx];
     const master = masterForUnit(idx);
     const audioScript = pickResourceByType(unit, "guion_audio");
     const build = pickResourceByType(unit, "notas_construccion");
@@ -2034,6 +2058,12 @@ async function toPptxBufferStoryboard(
       topic: unit.title
     });
     resolvedVisuals.push(visual);
+    const iconVisual = await resolveIconWithFallback({
+      courseName,
+      primaryQuery: iconQuery,
+      topic: unit.title
+    });
+    resolvedIcons.push(iconVisual);
 
     const slide = pptx.addSlide();
     addStoryBackground(slide);
@@ -2054,15 +2084,16 @@ async function toPptxBufferStoryboard(
     });
 
     slide.addText(truncateText(unit.title, 60), {
-      x: 0.85,
-      y: 0.93,
-      w: 6.4,
+      x: 1.45,
+      y: 0.94,
+      w: 5.8,
       h: 0.35,
       fontFace: "Calibri",
       fontSize: 18,
       bold: true,
       color: STORY.ink
     });
+    addIconMarker(slide, { x: 0.88, y: 0.88, size: 0.5, icon: iconVisual });
 
     slide.addText(truncateText(unit.purpose, 140), {
       x: 0.85,
@@ -2085,14 +2116,7 @@ async function toPptxBufferStoryboard(
       color: master.accent
     });
 
-    const visualMode = resolveVisualMode(visualSpec, infographicTech, unit.content_outline);
-    if (visualMode === "comparison") {
-      renderComparison(slide, { x: 0.85, y: 2.15, w: 6.4, h: 3.3 }, visualSpec.items);
-    } else if (visualMode === "image_support" || visualMode === "activity") {
-      renderNarrativeText(slide, { x: 0.85, y: 2.15, w: 6.4, h: 3.3 }, unit.content_outline);
-    } else {
-      renderInfographic(slide, { x: 0.85, y: 2.15, w: 6.4, h: 3.3 }, visualSpec);
-    }
+    renderNarrativeText(slide, { x: 0.85, y: 2.15, w: 6.4, h: 3.3 }, unit.content_outline);
 
     // Interactivity card
     slide.addShape("roundRect", {
@@ -2113,12 +2137,12 @@ async function toPptxBufferStoryboard(
       bold: true,
       color: master.accent
     });
-    const interLines = clampLines(interactivity, 2, 120);
+    const interLines = clampLines(interactivity, 3, 110);
     slide.addText(interLines.join("\n"), {
       x: 1.05,
-      y: 5.94,
+      y: 5.92,
       w: 6.0,
-      h: 0.63,
+      h: 0.66,
       fontFace: "Calibri",
       fontSize: 10,
       color: STORY.muted,
@@ -2136,8 +2160,9 @@ async function toPptxBufferStoryboard(
       line: { color: STORY.soft, width: 1 }
     });
 
-    const mediaArea = { x: 7.72, y: 0.83, w: 4.84, h: 3.45 };
-    const technicalArea = { x: 7.72, y: 4.33, w: 4.84, h: 2.32 };
+    const mediaArea = { x: 7.72, y: 0.83, w: 4.84, h: 3.15 };
+    const visualArea = { x: 7.72, y: 4.05, w: 4.84, h: 2.6 };
+    const visualMode = resolveVisualMode(visualSpec, infographicTech, unit.content_outline);
 
     if (visual?.imagePath) {
       slide.addImage({
@@ -2183,7 +2208,71 @@ async function toPptxBufferStoryboard(
       });
     }
 
-    renderInfographicTechCard(slide, technicalArea, infographicTech);
+    slide.addShape("roundRect", {
+      x: visualArea.x,
+      y: visualArea.y,
+      w: visualArea.w,
+      h: visualArea.h,
+      fill: { color: "FFFFFF" },
+      line: { color: STORY.soft, width: 1 }
+    });
+    slide.addText("Componente visual", {
+      x: visualArea.x + 0.16,
+      y: visualArea.y + 0.1,
+      w: visualArea.w - 0.32,
+      h: 0.2,
+      fontFace: "Calibri",
+      fontSize: 11,
+      bold: true,
+      color: STORY.ink
+    });
+
+    const canvasArea = {
+      x: visualArea.x + 0.14,
+      y: visualArea.y + 0.34,
+      w: visualArea.w - 0.28,
+      h: visualArea.h - 0.48
+    };
+
+    if (visualMode === "comparison") {
+      renderComparison(slide, canvasArea, visualSpec.items);
+    } else if (visualMode === "activity") {
+      renderActivityCanvas(slide, canvasArea, interactivity, visualSpec.items);
+    } else if (visualMode === "infographic") {
+      renderInfographic(slide, canvasArea, visualSpec);
+      if (infographicTech.requiresInfographic) {
+        const miniMermaidArea = {
+          x: canvasArea.x + canvasArea.w - 1.62,
+          y: canvasArea.y + canvasArea.h - 0.86,
+          w: 1.48,
+          h: 0.72
+        };
+        renderMermaidMiniDiagram(slide, miniMermaidArea, infographicTech);
+        slide.addText(`Metáfora visual: ${truncateText(infographicTech.visualMetaphor, 78)}`, {
+          x: visualArea.x + 0.18,
+          y: visualArea.y + visualArea.h - 0.22,
+          w: visualArea.w - 1.95,
+          h: 0.16,
+          fontFace: "Calibri",
+          fontSize: 8,
+          color: STORY.muted
+        });
+      }
+    } else {
+      const narrative = visualSpec.items.map((item) => `${item.title}${item.body ? `: ${item.body}` : ""}`);
+      renderNarrativeText(slide, canvasArea, narrative.length ? narrative : unit.content_outline);
+    }
+
+    slide.addText("Guía técnica completa en Notas del orador", {
+      x: visualArea.x + 0.16,
+      y: visualArea.y + visualArea.h - 0.2,
+      w: visualArea.w - 0.8,
+      h: 0.18,
+      fontFace: "Calibri",
+      fontSize: 8,
+      color: STORY.muted
+    });
+    addIconMarker(slide, { x: visualArea.x + visualArea.w - 0.54, y: visualArea.y + 0.06, size: 0.36, icon: iconVisual });
 
     // Mock UI buttons/hotspots over the visual (Genially-style).
     if (visualSpec.buttons.length) {
@@ -2197,7 +2286,7 @@ async function toPptxBufferStoryboard(
         label,
         slide: popupByKey.get(normalizeKey(label))
       }));
-      addOverlayButtons(slide, { x: 7.9, y: 3.82, w: 4.45 }, overlayButtons);
+      addOverlayButtons(slide, { x: 7.92, y: 3.56, w: 4.4 }, overlayButtons);
     }
 
     // Footer: navigation + resource chips
@@ -2250,6 +2339,8 @@ async function toPptxBufferStoryboard(
       interactivity,
       visualQuery,
       visualAttribution: visual?.attributionLines ?? [],
+      iconQuery,
+      iconAttribution: iconVisual?.attributionLines ?? [],
       visualSpecRaw,
       infographicTechRaw,
       extraResources: resources
@@ -2259,7 +2350,7 @@ async function toPptxBufferStoryboard(
 
   // Popup slides (simulated interactivity)
   for (let idx = 0; idx < unitSpecs.length; idx += 1) {
-    const { unit, visualSpec, visualQuery, visualSpecRaw, infographicTechRaw } = unitSpecs[idx];
+    const { unit, visualSpec, visualQuery, iconQuery, visualSpecRaw, infographicTechRaw } = unitSpecs[idx];
     const popups = visualSpec.popups.slice(0, 3);
     if (!popups.length) continue;
 
@@ -2270,6 +2361,7 @@ async function toPptxBufferStoryboard(
 
     const mainSlide = mainSlideNos[idx] ?? menuSlideNo;
     const visual = resolvedVisuals[idx] ?? null;
+    const iconVisual = resolvedIcons[idx] ?? null;
 
     const baseNotes = buildNotes({
       courseTitle: output.project.title,
@@ -2280,6 +2372,8 @@ async function toPptxBufferStoryboard(
       interactivity,
       visualQuery,
       visualAttribution: visual?.attributionLines ?? [],
+      iconQuery,
+      iconAttribution: iconVisual?.attributionLines ?? [],
       visualSpecRaw,
       infographicTechRaw,
       extraResources: resources
